@@ -72,6 +72,11 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# LaTeX
+*.out
+*.aux
+*.synctex*
+
 # pyenv
 .python-version
 
