@@ -1,0 +1,3 @@
+\usepackage{fontspec, xunicode, xltxtra}
+\setmainfont{Microsoft YaHei}
+\usepackage{ctex}
