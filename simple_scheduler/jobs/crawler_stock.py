@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 @Time: 2020/5/9 14:40
-@Author:  MUYUE1
+@Author: Sue Zhu
 """
 import json
 import logging
@@ -57,7 +57,8 @@ class AShareDescription(TushareCrawlerJob):
         stock_info.loc[:, 'list_dt'] = pd.to_datetime(stock_info['list_dt'])
         stock_info.loc[:, 'delist_dt'] = pd.to_datetime(stock_info['delist_dt']).fillna(pd.Timestamp.max)
         self.upsert_data(
-            records=(record.dropna() for _, record in stock_info.iterrows()),#.to_dict(orient='records')
+            records=(record.dropna() for _, record in stock_info.iterrows()),
+            model=model_stock_org.AShareDescription,
             ukeys=[self.model.wind_code]
         )
 
@@ -65,6 +66,8 @@ class AShareDescription(TushareCrawlerJob):
 class AShareAnnouncement(WebCrawlerJob):
     """
     Crawler stock announcement from `eastmoney.com`
+    Note: announcement address should be like this
+    http://data.eastmoney.com/notices/detail/{symbol}/{info_code},{random_code}.html
     """
 
     @classmethod
@@ -98,13 +101,8 @@ class AShareAnnouncement(WebCrawlerJob):
             'affect_dt': pd.Timestamp(raw_dict['ENDDATE']).date(),
             'ann_dt': pd.Timestamp(raw_dict['NOTICEDATE']).date(),
             'title': raw_dict['NOTICETITLE'],
-
-            # "http://data.eastmoney.com/notices/detail/{symbol}/{info_code},{random_code}.html"
             'em_info_code': raw_dict['INFOCODE'],
             'em_table_id': raw_dict['TABLEID'],
-
-            'symbol': raw_dict['CDSY_SECUCODES']['SECURITYCODE'],
-            'short_name': raw_dict['CDSY_SECUCODES']['SECURITYSHORTNAME'],
         })
 
     def run(self, start_date='', *args, **kwargs):
@@ -115,12 +113,10 @@ class AShareAnnouncement(WebCrawlerJob):
 
         for dt in pd.date_range(start_date, pd.Timestamp.now()):
             var_name = self.random_str(8)
-            respond = self.comment_respond('GET', self.url(var_name, dt))
+            respond = self.request('GET', self.url(var_name, dt))
             if respond.status_code == 200:
                 respond_data = json.loads(respond.text.replace(f'var {var_name} = ', '', count=1)[:-1])
 
 
 if __name__ == '__main__':
-    from uuid import uuid4
-
-    AShareDescription(uuid4(), uuid4()).run()
+    AShareDescription().run()

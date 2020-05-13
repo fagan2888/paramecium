@@ -5,7 +5,7 @@
 """
 from ._base import *
 
-class EnumStockBoard(BaseORM):
-    __table_name__ = 'enum_stock_board'
+# class EnumStockBoard(BaseORM):
+#     __tablename__ = 'enum_stock_board'
 
 

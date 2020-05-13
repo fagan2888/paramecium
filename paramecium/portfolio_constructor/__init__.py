@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 @Time: 2019/8/4 17:09
-@Author:  MUYUE1
+@Author: Sue Zhu
 
 @Usage:
     Mainly use `scipy.optimize.minimize`.

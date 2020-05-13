@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 @Time: 2020/2/16 11:17
-@Author:  MUYUE1
+@Author: Sue Zhu
 """
 import re
+import pandas as pd
 
 import numpy as np
 from scipy import stats
+
 
 # ===================== Math ============================================
 def generate_exp_weights(half_life, n_weight):
@@ -14,6 +16,7 @@ def generate_exp_weights(half_life, n_weight):
     exp_weight = np.array([1 / (0.5 ** (1 / half_life) ** i) for i in range(n_weight, 0, -1)])
     exp_weight /= exp_weight.sum()
     return exp_weight
+
 
 def outlier_mad(raw_factor):
     # excess values - median absolute deviation (MAD)
@@ -23,11 +26,13 @@ def outlier_mad(raw_factor):
     mad = np.nanmedian(np.abs(raw_factor - factor_median))
 
     sigma = 1.4826 * mad
-    upper_bound = factor_median+3*sigma
-    lower_bound = factor_median-3*sigma
+    upper_bound = factor_median + 3 * sigma
+    lower_bound = factor_median - 3 * sigma
     new_factor = raw_factor.copy()
-    new_factor.loc[raw_factor>upper_bound] = raw_factor.loc[raw_factor>upper_bound].rank(ascending=True, pct=True)*0.5*sigma+upper_bound
-    new_factor.loc[raw_factor<lower_bound] = lower_bound - raw_factor.loc[raw_factor<lower_bound].rank(ascending=False, pct=True)*0.5*sigma
+    new_factor.loc[raw_factor > upper_bound] = raw_factor.loc[raw_factor > upper_bound].rank(ascending=True,
+                                                                                             pct=True) * 0.5 * sigma + upper_bound
+    new_factor.loc[raw_factor < lower_bound] = lower_bound - raw_factor.loc[raw_factor < lower_bound].rank(
+        ascending=False, pct=True) * 0.5 * sigma
     return new_factor
 
 
@@ -40,3 +45,24 @@ def camel2snake(strings):
 
 def capital_str():
     return (chr(i) for i in range(65, 91))
+
+
+# ===================== Date and Time ======================================
+_CAL_GROUP = {
+    'is_w': ('week', 'year'),
+    'is_m': ('month', 'year'),
+    'is_q': ('quarter', 'year'),
+    'is_y': ('year',),
+}
+
+
+def expand_calendar(trade_dates):
+    """
+    根据交易日形成日历对象，包含不同freq的判断
+    :param trade_dates: list-like series of datetime-like data
+    :return: pd.DataFrame, index为日期, columns 为 is_{freq:w/m/q/y}
+    """
+    cal = pd.DataFrame(0, columns=_CAL_GROUP.keys(), index=trade_dates).assign(is_d=1)
+    for freq_str, cols in _CAL_GROUP.items():
+        cal.loc[cal.groupby([getattr(cal.index, o) for o in cols]).tail(1).index, freq_str] = 1
+    return cal.resample('D').asfreq().fillna(0).astype(int)

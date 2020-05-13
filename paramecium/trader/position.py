@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 @Time: 2019/8/11 19:26
-@Author:  MUYUE1
+@Author: Sue Zhu
 """
 from dataclasses import dataclass
 import numpy as np

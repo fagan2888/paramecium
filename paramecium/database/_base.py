@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 @Time: 2020/2/22 11:47
-@Author:  MUYUE1
+@Author: Sue Zhu
 """
 import sqlalchemy as sa
 from sqlalchemy.ext.declarative import declarative_base

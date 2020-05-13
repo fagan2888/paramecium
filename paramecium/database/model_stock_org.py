@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 @Time: 2020/5/8 22:09
-@Author:  MUYUE1
+@Author: Sue Zhu
 """
 from ._base import *
 from sqlalchemy.dialects.postgresql import UUID
