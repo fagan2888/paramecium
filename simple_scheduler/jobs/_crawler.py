@@ -12,7 +12,7 @@ from requests import request
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
-from paramecium.database import ts_api, get_engine
+from paramecium.tools.db_source import get_tushare_api, get_sql_engine
 
 _HEADER = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -49,7 +49,7 @@ class _BaseCrawlerJob(job.JobBase):
 
     @property
     def sa_session(self):
-        Session = sessionmaker(bind=get_engine())
+        Session = sessionmaker(bind=get_sql_engine(env='postgres'))
         return Session()
 
     def upsert_data(self, records, model, ukeys=None):
@@ -71,7 +71,14 @@ class _BaseCrawlerJob(job.JobBase):
 
 
 class TushareCrawlerJob(_BaseCrawlerJob):
-    api = ts_api
+
+    def __init__(self, job_id=None, execution_id=None, env='tushare_prod'):
+        self.env = env
+        super().__init__(job_id, execution_id)
+
+    @property
+    def api(self):
+        return get_tushare_api(self.env)
 
 
 class WebCrawlerJob(_BaseCrawlerJob):

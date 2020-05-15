@@ -4,10 +4,9 @@
 @Author: Sue Zhu
 """
 import re
-import pandas as pd
 
 import numpy as np
-from scipy import stats
+import pandas as pd
 
 
 # ===================== Math ============================================
@@ -48,13 +47,6 @@ def capital_str():
 
 
 # ===================== Date and Time ======================================
-_CAL_GROUP = {
-    'is_w': ('week', 'year'),
-    'is_m': ('month', 'year'),
-    'is_q': ('quarter', 'year'),
-    'is_y': ('year',),
-}
-
 
 def expand_calendar(trade_dates):
     """
@@ -62,6 +54,12 @@ def expand_calendar(trade_dates):
     :param trade_dates: list-like series of datetime-like data
     :return: pd.DataFrame, index为日期, columns 为 is_{freq:w/m/q/y}
     """
+    _CAL_GROUP = {
+        'is_w': ('week', 'year'),
+        'is_m': ('month', 'year'),
+        'is_q': ('quarter', 'year'),
+        'is_y': ('year',),
+    }
     cal = pd.DataFrame(0, columns=_CAL_GROUP.keys(), index=trade_dates).assign(is_d=1)
     for freq_str, cols in _CAL_GROUP.items():
         cal.loc[cal.groupby([getattr(cal.index, o) for o in cols]).tail(1).index, freq_str] = 1
