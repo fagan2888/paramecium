@@ -18,17 +18,11 @@ class CalendarCrawler(TushareCrawlerJob):
     """
     Crawler trade calendar from tushare
     """
-
-    @classmethod
-    def meta_info(cls):
-        return {
-            **super().meta_info(),
-            'arguments': [
-                # pre_truncate:
-                {'type': 'bool', 'description': 'default `True`'},
-            ],
-            'example_arguments': '[True, ]'
-        }
+    meta_args = (
+        # pre_truncate:
+        {'type': 'int', 'description': '0 or 1 as bool, default `1`'},
+    )
+    meta_args_example = '[1]'
 
     def run(self, pre_truncate=True, *args, **kwargs):
         if pre_truncate:

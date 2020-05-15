@@ -6,6 +6,8 @@
 import sqlalchemy as sa
 from sqlalchemy.ext.declarative import declarative_base
 
+from ..tools.db_source import get_tushare_api,get_sql_engine
+
 CUR_TS = sa.text('current_timestamp')
 
 BaseORM = declarative_base(
@@ -25,3 +27,8 @@ class TradeCalendar(BaseORM):
     is_m = sa.Column(sa.Integer)
     is_q = sa.Column(sa.Integer)
     is_y = sa.Column(sa.Integer)
+
+
+def create_all_table():
+    from . import model_stock_org, model_fund_org, model_const
+    BaseORM.metadata.create_all(get_sql_engine('postgres'))

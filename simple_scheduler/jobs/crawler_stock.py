@@ -5,7 +5,6 @@
 """
 import json
 import logging
-import re
 
 import numpy as np
 import pandas as pd
@@ -20,6 +19,9 @@ class AShareDescription(TushareCrawlerJob):
     """
     Crawler stock description from tushare
     """
+    meta_args = ()
+    meta_args_example = '[]'
+
     _COL = {
         'ts_code': 'wind_code',
         'name': 'short_name',
@@ -36,18 +38,6 @@ class AShareDescription(TushareCrawlerJob):
         'comp_code': 'comp_code',
     }
 
-    @classmethod
-    def meta_info(cls):
-        return {
-            **super().meta_info(),
-            'arguments': [],
-            'example_arguments': ''
-        }
-
-    @property
-    def model(self):
-        return model_stock_org.AShareDescription
-
     def run(self, *args, **kwargs):
         stock_info = pd.concat((
             self.api.stock_basic(
@@ -56,10 +46,11 @@ class AShareDescription(TushareCrawlerJob):
         )).rename(columns=self._COL).fillna(np.nan)
         stock_info.loc[:, 'list_dt'] = pd.to_datetime(stock_info['list_dt'])
         stock_info.loc[:, 'delist_dt'] = pd.to_datetime(stock_info['delist_dt']).fillna(pd.Timestamp.max)
+
+        model = model_stock_org.AShareDescription
         self.upsert_data(
             records=(record.dropna() for _, record in stock_info.iterrows()),
-            model=model_stock_org.AShareDescription,
-            ukeys=[self.model.wind_code]
+            model=model, ukeys=[model.wind_code]
         )
 
 
@@ -69,19 +60,13 @@ class AShareAnnouncement(WebCrawlerJob):
     Note: announcement address should be like this
     http://data.eastmoney.com/notices/detail/{symbol}/{info_code},{random_code}.html
     """
-
-    @classmethod
-    def meta_info(cls):
-        return {
-            **super().meta_info(),
-            'arguments': [
+    meta_args = (
                 # is_update
                 {'type': 'int', 'description': '1: update mode, 0: replace mode'},
                 # argument2
                 {'type': 'string', 'description': 'Second argument'}
-            ],
-            'example_arguments': '[1, ]'
-        }
+            )
+    meta_args_example = '[1]'
 
     def __init__(self, job_id, execution_id):
         super().__init__(job_id, execution_id)
