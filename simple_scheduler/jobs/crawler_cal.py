@@ -24,7 +24,7 @@ class CalendarCrawler(TushareCrawlerJob):
     )
     meta_args_example = '[1]'
 
-    def run(self, pre_truncate=True, *args, **kwargs):
+    def run(self, pre_truncate=1, *args, **kwargs):
         if pre_truncate:
             session = self.sa_session
             try:
@@ -36,15 +36,14 @@ class CalendarCrawler(TushareCrawlerJob):
             else:
                 session.commit()
 
-        dates = self.api.trade_cal(exchange='SZSE', start_date='19000101')['trade_date']
+        self.logger.info('Getting data from tushare')
+        dates = self.get_tushare_data(api_name='trade_cal', exchange='SZSE', start_date='19000101')['trade_date']
         cal_df = expand_calendar(pd.to_datetime(dates, format='%Y%m%d'))
         cal_df.index.name = 'trade_dt'
 
-        self.upsert_data(
-            records=(record.dropna() for _, record in cal_df.reset_index().iterrows()),
-            model=CalModel, ukeys=[CalModel.trade_dt],
-        )
+        self.logger.info('upsert data')
+        self.upsert_data(records=cal_df.reset_index(), model=CalModel, ukeys=[CalModel.trade_dt])
 
 
 if __name__ == '__main__':
-    CalendarCrawler().run(True)
+    CalendarCrawler().run(1)

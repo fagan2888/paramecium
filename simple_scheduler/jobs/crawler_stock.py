@@ -40,7 +40,8 @@ class AShareDescription(TushareCrawlerJob):
 
     def run(self, *args, **kwargs):
         stock_info = pd.concat((
-            self.api.stock_basic(
+            self.get_tushare_data(
+                api_name='stock_basic',
                 exchange=exchange, fields=','.join(self._COL.keys())
             ) for exchange in ('SSE', 'SZSE')
         )).rename(columns=self._COL).fillna(np.nan)
@@ -48,10 +49,7 @@ class AShareDescription(TushareCrawlerJob):
         stock_info.loc[:, 'delist_dt'] = pd.to_datetime(stock_info['delist_dt']).fillna(pd.Timestamp.max)
 
         model = model_stock_org.AShareDescription
-        self.upsert_data(
-            records=(record.dropna() for _, record in stock_info.iterrows()),
-            model=model, ukeys=[model.wind_code]
-        )
+        self.upsert_data(records=stock_info, model=model, ukeys=[model.wind_code])
 
 
 class AShareAnnouncement(WebCrawlerJob):
@@ -61,11 +59,11 @@ class AShareAnnouncement(WebCrawlerJob):
     http://data.eastmoney.com/notices/detail/{symbol}/{info_code},{random_code}.html
     """
     meta_args = (
-                # is_update
-                {'type': 'int', 'description': '1: update mode, 0: replace mode'},
-                # argument2
-                {'type': 'string', 'description': 'Second argument'}
-            )
+        # is_update
+        {'type': 'int', 'description': '1: update mode, 0: replace mode'},
+        # argument2
+        {'type': 'string', 'description': 'Second argument'}
+    )
     meta_args_example = '[1]'
 
     def __init__(self, job_id, execution_id):

@@ -30,9 +30,6 @@ class FundUniverse(UniverseABC):
         self.issue = issue_ * 30  # simply think there is 30 days each month.
         self.size = size_
 
-
-class ExcelUniverse(FundUniverse):
-
     @lru_cache(maxsize=2)
     def get_instruments(self, dt):
         filters = [

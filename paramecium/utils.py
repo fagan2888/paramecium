@@ -9,6 +9,19 @@ import numpy as np
 import pandas as pd
 
 
+def chunk(iterable, chunk_size):
+    """ Generate sequences of elements from `iterable` with `chunk_size`"""
+    records = []
+    for i, record in enumerate(iterable, start=1):
+        records.append(record)
+        if i % chunk_size == 0:
+            yield records
+            records.clear()
+
+    if records:
+        yield records
+
+
 # ===================== Math ============================================
 def generate_exp_weights(half_life, n_weight):
     """ Generate `n` exponentially weights with `half_life` """
