@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Run the scheduler process."""
+"""
+Run the scheduler process.
+pip install git+https://github.com/Nextdoor/ndscheduler.git#egg=ndscheduler
+"""
 
 import os
 

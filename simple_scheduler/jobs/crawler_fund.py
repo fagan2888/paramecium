@@ -4,12 +4,15 @@
 @Author: Sue Zhu
 """
 
+import json
+
 import numpy as np
 import pandas as pd
+from requests import request
 
 from paramecium.database import model_fund_org, create_all_table
 from paramecium.utils import chunk
-from simple_scheduler.jobs._crawler import TushareCrawlerJob
+from simple_scheduler.jobs._crawler import TushareCrawlerJob, WebCrawlerJob
 
 
 class FundDescription(TushareCrawlerJob):
@@ -58,6 +61,39 @@ class FundDescription(TushareCrawlerJob):
         self.upsert_data(records=fund_info, model=model, ukeys=[model.wind_code])
 
 
+class FundSales(WebCrawlerJob):
+    meta_args = (
+        # n_records
+        {'type': 'int', 'description': 'number more than sale funds.'},
+    )
+
+    def run(self, n_records=3000, *args, **kwargs):
+        respons_raw = request(
+            "GET",
+            f"https://www.xcsc.com/servlet/json?funcNo=742100&curtPageNo=1&numPerPage={n_records}&isDxsale=0"
+        )
+        respons_json = json.loads(respons_raw.text)['results'][0]
+        if respons_json['totalPages'] > 1:
+            self.logger.warn(
+                f"the results not cover all funds for sale, please make "
+                f"`n_records` more than {respons_json['totalRows']}.")
+        respons_df = pd.DataFrame(respons_json['data']).reindex(columns=[
+            'product_code', 'product_id', 'product_abbr', 'risk_level', 'per_buy_limit', 'product_status',
+            'subscribe_start_time', 'subscribe_end_time', 'purchase_rates', 'purchase_rates_dis',
+        ]).replace('', np.nan)
+        for c in ('product_id', 'risk_level', 'per_buy_limit', 'product_status',
+                  'purchase_rates', 'purchase_rates_dis'):
+            respons_df.loc[:, c] = pd.to_numeric(respons_df[c], errors='coerce')
+        for c in ('subscribe_start_time', 'subscribe_end_time'):
+            respons_df.loc[:, c] = pd.to_datetime(respons_df[c].replace('0', np.nan), format='%Y%m%d')
+        model = model_fund_org.MutualFundSale
+        self.upsert_data(respons_df.astype({
+            'product_id': int, 'risk_level': int,
+            'per_buy_limit': float, 'product_status': int,
+            'purchase_rates': float, 'purchase_rates_dis': float,
+        }), model=model, ukeys=[model.product_code])
+
+
 class FundNav(TushareCrawlerJob):
     """
     Crawler fund net asset values from tushare
@@ -87,7 +123,7 @@ class FundNav(TushareCrawlerJob):
         ).squeeze() - pd.Timedelta(days=7)
 
         nav = pd.DataFrame()
-        for code, dt in max_dts.loc[max_dts.index.str.len()<10].items():
+        for code, dt in max_dts.loc[max_dts.index.str.len() < 10].items():
             try:
                 self.logger.info(f'getting {code} nav from tushare')
                 nav = pd.concat((
@@ -121,7 +157,7 @@ class FundNav(TushareCrawlerJob):
             ukeys=[model_fund_org.MutualFundNav.wind_code, model_fund_org.MutualFundNav.trade_dt],
             msg='fund navs',
         )
-        aum = nav[['oid', *self._aum_cols]].dropna(subset=self._aum_cols, how='all')
+        aum = nav.loc[:, ['oid', *self._aum_cols]].dropna(subset=self._aum_cols, how='all')
         if aum.shape[0]:
             self.upsert_data(
                 records=aum,
@@ -130,7 +166,6 @@ class FundNav(TushareCrawlerJob):
                 msg='fund aums'
             )
         return pd.DataFrame()
-
 
 
 class FundManager(TushareCrawlerJob):
@@ -167,5 +202,6 @@ class FundManager(TushareCrawlerJob):
 if __name__ == '__main__':
     create_all_table()
     # FundDescription().run(True)
-    FundNav().run()
-    FundManager().run()
+    # FundNav(env='tushare_prod').run()
+    # FundManager().run()
+    FundSales().run()

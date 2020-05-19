@@ -40,6 +40,21 @@ class MutualFundDescription(BaseORM):
     redemption_start_dt = sa.Column(sa.Date)  # 日常赎回起始日
 
 
+class MutualFundSale(BaseORM):
+    __tablename__ = 'mf_web_sale'
+
+    product_code = sa.Column(sa.String(10), primary_key=True)
+    product_id = sa.Column(sa.Integer)
+    product_abbr = sa.Column(sa.String(100))
+    risk_level = sa.Column(sa.Integer)
+    per_buy_limit = sa.Column(sa.Float)
+    product_status = sa.Column(sa.Integer)
+    subscribe_start_time = sa.Column(sa.Date)
+    subscribe_end_time = sa.Column(sa.Date)
+    purchase_rates = sa.Column(sa.Float)
+    purchase_rates_dis = sa.Column(sa.Float)
+
+
 class MutualFundNav(BaseORM):
     __tablename__ = 'mf_org_nav'
 
