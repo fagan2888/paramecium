@@ -74,50 +74,63 @@ class FundNav(TushareCrawlerJob):
             from (
                 select 
                     d.*,
-                    case when p.max_dt is null then date('1900-01-01') else p.max_dt end as max_dt
+                    case when p.max_dt is null then d.setup_date else p.max_dt end as max_dt
                 from mf_org_description d 
                 left join (select wind_code, max(trade_dt) as max_dt from mf_org_nav group by wind_code) p 
                 on d.wind_code=p.wind_code
             ) t
             where 
-                and t.max_dt < t.maturity_date
+                t.max_dt < t.maturity_date
                 and t.setup_date > date('1900-01-01')
             """,
             self.sa_session.bind, parse_dates=['max_dt'], index_col=['wind_code']
         ).squeeze() - pd.Timedelta(days=7)
 
-        for code, dt in max_dts.items():
+        nav = pd.DataFrame()
+        for code, dt in max_dts.loc[max_dts.index.str.len()<10].items():
             try:
-                self.logger.info('getting nav from tushare')
-                nav = self.get_tushare_data(
-                    api_name='fund_nav',
-                    date_cols=['end_date', 'ann_date'],
-                    org_cols=['ts_code', 'ann_date', 'end_date', 'unit_nav', 'accum_nav',
-                              'net_asset', 'total_netasset', 'adj_nav'],
-                    col_mapping={
-                        'ts_code': 'wind_code',
-                        'end_date': 'trade_dt',
-                        'accum_nav': 'acc_nav',
-                    },
-                    ts_code=code
-                ).loc[lambda df: df['trade_dt']>=dt]
-
-                nav['oid'] = self.upsert_data(
-                    records=nav.drop(self._aum_cols, axis=1, errors='ignore'),
-                    model=model_fund_org.MutualFundNav,
-                    ukeys=[model_fund_org.MutualFundNav.wind_code, model_fund_org.MutualFundNav.trade_dt],
-                    msg='fund navs',
-                )
-
-                self.upsert_data(
-                    records=nav[['oid', *self._aum_cols]].dropna(subset=self._aum_cols, how='all'),
-                    model=model_fund_org.MutualFundAUM,
-                    ukeys=[model_fund_org.MutualFundAUM.oid],
-                    msg='fund aums'
-                )
+                self.logger.info(f'getting {code} nav from tushare')
+                nav = pd.concat((
+                    nav,
+                    self.get_tushare_data(
+                        api_name='fund_nav',
+                        date_cols=['end_date', 'ann_date'],
+                        org_cols=['ts_code', 'ann_date', 'end_date', 'unit_nav', 'accum_nav',
+                                  'net_asset', 'total_netasset', 'adj_nav'],
+                        col_mapping={
+                            'ts_code': 'wind_code',
+                            'end_date': 'trade_dt',
+                            'accum_nav': 'acc_nav',
+                        },
+                        ts_code=code
+                    ).loc[lambda df: df['trade_dt'] >= dt]
+                ), axis=0)
             except Exception as e:
                 self.logger.error(f'error happends when run {repr(e)}')
                 break
+
+            if nav.shape[0] > 1000:
+                nav = self.upsert_nav(nav)
+
+        nav = self.upsert_nav(nav)
+
+    def upsert_nav(self, nav):
+        nav['oid'] = self.upsert_data(
+            records=nav.drop(self._aum_cols, axis=1, errors='ignore'),
+            model=model_fund_org.MutualFundNav,
+            ukeys=[model_fund_org.MutualFundNav.wind_code, model_fund_org.MutualFundNav.trade_dt],
+            msg='fund navs',
+        )
+        aum = nav[['oid', *self._aum_cols]].dropna(subset=self._aum_cols, how='all')
+        if aum.shape[0]:
+            self.upsert_data(
+                records=aum,
+                model=model_fund_org.MutualFundAUM,
+                ukeys=[model_fund_org.MutualFundAUM.oid],
+                msg='fund aums'
+            )
+        return pd.DataFrame()
+
 
 
 class FundManager(TushareCrawlerJob):
@@ -154,5 +167,5 @@ class FundManager(TushareCrawlerJob):
 if __name__ == '__main__':
     create_all_table()
     # FundDescription().run(True)
-    # FundNav().run()
+    FundNav().run()
     FundManager().run()
