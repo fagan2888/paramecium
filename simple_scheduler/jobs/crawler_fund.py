@@ -3,7 +3,6 @@
 @Time: 2020/5/12 20:58
 @Author: Sue Zhu
 """
-
 import json
 
 import numpy as np
@@ -111,10 +110,11 @@ class FundNav(TushareCrawlerJob):
                 select 
                     d.*,
                     case when p.max_dt is null then d.setup_date else p.max_dt end as max_dt
-                from mf_org_description d 
+                from mf_org_desc
+                ription d 
                 left join (select wind_code, max(trade_dt) as max_dt from mf_org_nav group by wind_code) p 
                 on d.wind_code=p.wind_code
-            ) t
+            ) t             
             where 
                 t.max_dt < t.maturity_date
                 and t.setup_date > date('1900-01-01')
@@ -145,7 +145,7 @@ class FundNav(TushareCrawlerJob):
                 self.logger.error(f'error happends when run {repr(e)}')
                 break
 
-            if nav.shape[0] > 1000:
+            if nav.shape[0] > 5000:
                 nav = self.upsert_nav(nav)
 
         nav = self.upsert_nav(nav)
@@ -201,7 +201,7 @@ class FundManager(TushareCrawlerJob):
 
 if __name__ == '__main__':
     create_all_table()
-    # FundDescription().run(True)
-    # FundNav(env='tushare_prod').run()
-    # FundManager().run()
+    FundDescription().run(True)
+    FundNav(env='tushare_prod').run()
+    FundManager().run()
     FundSales().run()
