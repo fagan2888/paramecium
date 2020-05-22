@@ -110,8 +110,7 @@ class FundNav(TushareCrawlerJob):
                 select 
                     d.*,
                     case when p.max_dt is null then d.setup_date else p.max_dt end as max_dt
-                from mf_org_desc
-                ription d 
+                from mf_org_description d 
                 left join (select wind_code, max(trade_dt) as max_dt from mf_org_nav group by wind_code) p 
                 on d.wind_code=p.wind_code
             ) t             
