@@ -119,10 +119,11 @@ class FundNav(TushareCrawlerJob):
                 and t.setup_date > date('1900-01-01')
             """,
             self.sa_session.bind, parse_dates=['max_dt'], index_col=['wind_code']
-        ).squeeze() - pd.Timedelta(days=7)
+        ).squeeze().loc[lambda ser: ser.index.str.len() < 10]
+        max_dts -= pd.Timedelta(days=7)
 
         nav = pd.DataFrame()
-        for code, dt in max_dts.loc[max_dts.index.str.len() < 10].items():
+        for i, (code, dt) in enumerate(max_dts.items(), start=1):
             try:
                 self.logger.info(f'getting {code} nav from tushare')
                 nav = pd.concat((
@@ -145,16 +146,16 @@ class FundNav(TushareCrawlerJob):
                 break
 
             if nav.shape[0] > 5000:
-                nav = self.upsert_nav(nav)
+                nav = self.upsert_nav(nav, i/max_dts.shape[0])
 
-        nav = self.upsert_nav(nav)
+        nav = self.upsert_nav(nav, 1)
 
-    def upsert_nav(self, nav):
+    def upsert_nav(self, nav, pct):
         nav['oid'] = self.upsert_data(
             records=nav.drop(self._aum_cols, axis=1, errors='ignore'),
             model=model_fund_org.MutualFundNav,
             ukeys=[model_fund_org.MutualFundNav.wind_code, model_fund_org.MutualFundNav.trade_dt],
-            msg='fund navs',
+            msg=f'fund navs({pct*100:.2f}%)',
         )
         aum = nav.loc[:, ['oid', *self._aum_cols]].dropna(subset=self._aum_cols, how='all')
         if aum.shape[0]:

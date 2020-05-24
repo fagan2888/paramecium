@@ -4,7 +4,7 @@
 @Author: Sue Zhu
 """
 from ._base import *
-from sqlalchemy.dialects.postgresql import UUID
+import sqlalchemy.dialects.postgresql as pg
 
 
 class AShareDescription(BaseORM):
@@ -36,18 +36,25 @@ class AShareDescription(BaseORM):
     # 434009000:科创板
 
 
-# class AShareSTStatus(BaseORM):
-#     """
-#     A股公告
-#     """
-#     __tablename__ = 'stock_org_st'
-#
-#     oid = sa.Column()
-#     wind_code = sa.Column(sa.String(10)) # 股票代码
-#     short_name = sa.Column(sa.String(100)) # 股票简称
-#     adjust_type = sa.Column(sa.String(2))# 调整类型 TODO
-#     # chg_dt = # 实施日期
-#     # 公告摘要
-#     # 公告全文d
+class AShareEODPrice(BaseORM):
+    """
+    中国A股日行情
+    http://tushare.xcsc.com:7173/document/2?doc_id=27
+    """
+    __tablename__ = 'stock_org_price'
+
+    wind_code = sa.Column(sa.String(10))  # ts代码 ts_code
+    trade_dt = sa.Column(sa.Date)  # 交易日期 trade_date
+    currency = sa.Column(sa.String(10))  # 货币代码 crncy_code
+    open_ = sa.Column(pg.REAL)  # 开盘价(元) open
+    high_ = sa.Column(pg.REAL)  # 最高价(元) high
+    low_ = sa.Column(pg.REAL)  # 最低价(元) low
+    close_ = sa.Column(pg.REAL)  # 收盘价(元) close
+    volume_ = sa.Column(sa.Integer)  # 成交量(手) volume
+    amount_ = sa.Column(pg.REAL)  # 成交金额(千元) amount
+    adj_factor = sa.Column(pg.REAL)  # 复权因子
+    avg_price = sa.Column(pg.REAL)  # 均价(VWAP)
+    trade_status = sa.Column(sa.String(10))  # 交易状态
+
 
 
