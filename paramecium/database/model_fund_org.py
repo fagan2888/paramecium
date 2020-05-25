@@ -88,9 +88,3 @@ class MutualFundManager(BaseORM):
     end_dt = sa.Column(sa.Date)  # str Y 离任日期end_date
 
     sa.UniqueConstraint(wind_code, manager_name, start_dt)
-    # gender = sa.Column(sa.String())  # str Y 性别
-    # birth_year = sa.Column(sa.String())  # str Y 出生年份
-    # edu = sa.Column(sa.String())  # str Y 学历
-    # nationality = sa.Column(sa.String())  # str Y 国籍
-    # resume = sa.Column(sa.String())  # str Y 简历
-    # update_flag = sa.Column(sa.String())  # str Y 更新标志

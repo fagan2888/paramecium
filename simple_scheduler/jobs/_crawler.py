@@ -51,16 +51,18 @@ class _BaseCrawlerJob(job.JobBase):
     @property
     def sa_session(self):
         if _BaseCrawlerJob._session_cls is None:
-            session_factory = sessionmaker(bind=get_sql_engine(env='postgres'))
+            session_factory = sessionmaker(bind=get_sql_engine(env='postgres', echo=True))
             _BaseCrawlerJob._session_cls = scoped_session(session_factory)
         return _BaseCrawlerJob._session_cls()
 
     def upsert_data(self, records, model, ukeys=None, msg=''):
-        self.logger.info(f'start to upsert data {msg}...')
         result_ids = []
         session = self.sa_session
+
         if isinstance(records, pd.DataFrame):
             records = (record.dropna() for _, record in records.iterrows())
+
+        self.logger.info(f'start to upsert data {msg}...')
         try:
             for record in records:
                 insert_exe = insert(model).values(**record, updated_at=sa.text('current_timestamp'))

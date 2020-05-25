@@ -145,10 +145,11 @@ class FundNav(TushareCrawlerJob):
                 self.logger.error(f'error happends when run {repr(e)}')
                 break
 
-            if nav.shape[0] > 5000:
+            if nav.shape[0] > 10000:
                 nav = self.upsert_nav(nav, i/max_dts.shape[0])
 
-        nav = self.upsert_nav(nav, 1)
+        if nav.shape[0]:
+            nav = self.upsert_nav(nav, 1)
 
     def upsert_nav(self, nav, pct):
         nav['oid'] = self.upsert_data(

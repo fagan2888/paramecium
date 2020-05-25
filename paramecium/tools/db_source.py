@@ -35,8 +35,10 @@ def get_tushare_api(api_name='tushare_prd'):
     return ts.pro_api(token=config['token'], env=config['env'])
 
 
-def get_sql_engine(env='postgres'):
-    return create_engine(URL(**get_data_config(env)), pool_size=30, encoding='utf-8')# echo=True
+def get_sql_engine(env='postgres', **kwargs):
+    params = dict(pool_size=30, encoding='utf-8')
+    params.update(**kwargs)
+    return create_engine(URL(**get_data_config(env)), **params)
 
 
 def _get_session_factor(env='postgres'):
