@@ -51,7 +51,7 @@ class _BaseCrawlerJob(job.JobBase):
     @property
     def sa_session(self):
         if _BaseCrawlerJob._session_cls is None:
-            session_factory = sessionmaker(bind=get_sql_engine(env='postgres', echo=True))
+            session_factory = sessionmaker(bind=get_sql_engine(env='postgres'))  # , echo=True
             _BaseCrawlerJob._session_cls = scoped_session(session_factory)
         return _BaseCrawlerJob._session_cls()
 

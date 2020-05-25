@@ -44,7 +44,7 @@ class MutualFundSale(BaseORM):
     __tablename__ = 'mf_web_sale'
 
     product_code = sa.Column(sa.String(10), primary_key=True)
-    product_id = sa.Column(sa.Integer)
+    product_id = sa.Column(sa.Integer, index=True)
     product_abbr = sa.Column(sa.String(100))
     risk_level = sa.Column(sa.Integer)
     per_buy_limit = sa.Column(sa.Float)
@@ -61,7 +61,7 @@ class MutualFundNav(BaseORM):
     oid = sa.Column(UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
     wind_code = sa.Column(sa.String(40), index=True)
     ann_date = sa.Column(sa.Date)
-    trade_dt = sa.Column(sa.Date, index=True)
+    trade_dt = sa.Column(sa.Date)
     unit_nav = sa.Column(sa.Float)  #
     acc_nav = sa.Column(sa.Float)
     adj_nav = sa.Column(sa.Float)
@@ -84,7 +84,7 @@ class MutualFundManager(BaseORM):
     wind_code = sa.Column(sa.String(40), index=True)  # ts_code str Y 基金代码
     ann_date = sa.Column(sa.Date)  # ann_date str Y 公告日期
     manager_name = sa.Column(sa.String(40))  # name str Y 基金经理姓名
-    start_dt = sa.Column(sa.Date)  # str Y 任职日期begin_date
+    start_dt = sa.Column(sa.Date, index=True)  # str Y 任职日期begin_date
     end_dt = sa.Column(sa.Date)  # str Y 离任日期end_date
 
     sa.UniqueConstraint(wind_code, manager_name, start_dt)

@@ -202,7 +202,7 @@ class FundManager(TushareCrawlerJob):
 
 if __name__ == '__main__':
     create_all_table()
-    FundDescription().run(True)
+    # FundDescription().run(True)
+    FundSales().run()
     FundNav(env='tushare_prod').run()
     FundManager().run()
-    FundSales().run()

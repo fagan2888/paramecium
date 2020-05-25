@@ -39,7 +39,8 @@ class AShareDescription(TushareCrawlerJob):
             ) for exchange in ('SSE', 'SZSE')
         )).rename(columns=self._COL).fillna(np.nan)
         stock_info.loc[:, 'list_dt'] = pd.to_datetime(stock_info['list_dt'])
-        stock_info.loc[:, 'delist_dt'] = pd.to_datetime(stock_info['delist_dt']).fillna(pd.Timestamp.max)
+        stock_info.loc[:, 'delist_dt'] = pd.to_datetime(stock_info['delist_dt'])
+        stock_info.loc[lambda df: df['list_dt'].notnull()&df['delist_dt'].isnull(), 'delist_dt'] = pd.Timestamp.max
         stock_info.loc[stock_info['list_dt'].isnull(), 'delist_dt'] = pd.NaT
 
         model = model_stock_org.AShareDescription
