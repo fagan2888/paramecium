@@ -7,7 +7,7 @@ __all__ = ['FactorInterface']
 
 import abc
 
-from paramecium.utils import camel2snake
+from .utils import camel2snake
 
 
 class FactorInterface(metaclass=abc.ABCMeta):
@@ -19,3 +19,7 @@ class FactorInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def compute(self):
         pass
+
+
+
+

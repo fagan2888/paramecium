@@ -6,11 +6,11 @@
 import configparser
 from functools import lru_cache
 from pathlib import Path
-
+from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.orm import sessionmaker, scoped_session
-
+from iFinDPy import THS_iFinDLogin, THS_iFinDLogout
 
 def get_data_config(section):
     """
@@ -24,7 +24,7 @@ def get_data_config(section):
 
 
 @lru_cache(maxsize=1)
-def get_tushare_api(api_name='tushare_prd'):
+def get_tushare_api(api_name='tushare_prod'):
     """
     获取Tushare API
     :param api_name:
@@ -41,7 +41,19 @@ def get_sql_engine(env='postgres', **kwargs):
     return create_engine(URL(**get_data_config(env)), **params)
 
 
-def _get_session_factor(env='postgres'):
+def get_session_factory(env='postgres'):
     session_factory = sessionmaker(bind=get_sql_engine(env))
     Session = scoped_session(session_factory)
     return Session
+
+
+@contextmanager
+def get_ifind_api():
+    err_code = THS_iFinDLogin(**get_data_config('ifind'))
+    if err_code == '2':
+        print("iFind API has an error!")
+    else:
+        print("Successful login IFind")
+        yield err_code
+    print("iFind API")
+    THS_iFinDLogout()

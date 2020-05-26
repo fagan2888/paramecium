@@ -5,6 +5,7 @@
 """
 
 from paramecium.database import model_stock_org, TradeCalendar
+
 from simple_scheduler.jobs._crawler import *
 
 logger = logging.getLogger(__name__)
