@@ -3,6 +3,7 @@
 @Time: 2020/5/13 8:39
 @Author: Sue Zhu
 """
+import logging
 import configparser
 from functools import lru_cache
 from pathlib import Path
@@ -10,6 +11,9 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.orm import sessionmaker, scoped_session
+
+_log = logging.getLogger(__name__)
+
 
 def get_data_config(section):
     """
@@ -51,9 +55,9 @@ def get_ifind_api():
     from iFinDPy import THS_iFinDLogin, THS_iFinDLogout
     err_code = THS_iFinDLogin(**get_data_config('ifind'))
     if err_code == '2':
-        print("iFind API has an error!")
+        _log.error("iFind API has an error!")
     else:
-        print("Successful login IFind")
+        _log.debug("Successful login IFind")
         yield err_code
-    print("iFind API")
+    _log.debug("Try to logout IFind")
     THS_iFinDLogout()

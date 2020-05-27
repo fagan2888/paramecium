@@ -28,9 +28,11 @@ class FundDescription(TushareCrawlerJob):
         model = model_fund_org.MutualFundDescription
 
         if pre_truncate:
-            self.truncate_table(model)
+            with self.get_session() as session:
+                self.get_logger().info(f'truncate table {model.__tablename__:s}.')
+                session.execute(f'truncate table {model.__tablename__:s};')
 
-        self.logger.info('Getting description from tushare')
+        self.get_logger().info('Getting description from tushare')
         fund_info = pd.concat(
             (self.get_tushare_data(api_name='fund_basic', market=m) for m in list('OE')),
             axis=0, sort=False
@@ -56,7 +58,7 @@ class FundDescription(TushareCrawlerJob):
         fund_info.loc[
             lambda df: df['setup_date'].notnull() & df['maturity_date'].isnull(), 'maturity_date'] = pd.Timestamp.max
 
-        self.logger.info('Saving description into database')
+        self.get_logger().info('Saving description into database')
         self.upsert_data(records=fund_info, model=model, ukeys=[model.wind_code])
 
 
@@ -73,7 +75,7 @@ class FundSales(WebCrawlerJob):
         )
         respons_json = json.loads(respons_raw.text)['results'][0]
         if respons_json['totalPages'] > 1:
-            self.logger.warn(
+            self.get_logger().warn(
                 f"the results not cover all funds for sale, please make "
                 f"`n_records` more than {respons_json['totalRows']}.")
         respons_df = pd.DataFrame(respons_json['data']).reindex(columns=[
@@ -102,7 +104,7 @@ class FundNav(TushareCrawlerJob):
     _aum_cols = ['net_asset', 'total_netasset']
 
     def run(self, *args, **kwargs):
-        self.logger.info('query exist nav data to get query range')
+        self.get_logger().info('query exist nav data to get query range')
         max_dts = pd.read_sql(
             """
             select t.wind_code, t.max_dt
@@ -125,7 +127,7 @@ class FundNav(TushareCrawlerJob):
         nav = pd.DataFrame()
         for i, (code, dt) in enumerate(max_dts.items(), start=1):
             try:
-                self.logger.info(f'getting {code} nav from tushare')
+                self.get_logger().info(f'getting {code} nav from tushare')
                 nav = pd.concat((
                     nav,
                     self.get_tushare_data(
@@ -142,7 +144,7 @@ class FundNav(TushareCrawlerJob):
                     ).loc[lambda df: df['trade_dt'] >= dt]
                 ), axis=0)
             except Exception as e:
-                self.logger.error(f'error happends when run {repr(e)}')
+                self.get_logger().error(f'error happends when run {repr(e)}')
                 break
 
             if nav.shape[0] > 10000:
@@ -183,9 +185,10 @@ class FundManager(TushareCrawlerJob):
 
     def run(self, *args, **kwargs):
         model = model_fund_org.MutualFundManager
-        fund_list = pd.DataFrame(
-            self.get_session().query(model_fund_org.MutualFundDescription.wind_code)
-        ).squeeze()
+
+        with self.get_session() as session:
+            fund_list = pd.DataFrame(session.query(model_fund_org.MutualFundDescription.wind_code)).squeeze()
+
         for funds in chunk(fund_list, 100):
             managers = self.get_tushare_data(
                 api_name='fund_manager',

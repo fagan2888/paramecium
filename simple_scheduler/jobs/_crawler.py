@@ -5,6 +5,7 @@
 """
 import logging
 import random
+from contextlib import contextmanager
 from functools import lru_cache
 from uuid import uuid4
 
@@ -14,7 +15,7 @@ import sqlalchemy as sa
 from ndscheduler.corescheduler import job
 from requests import request
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import sessionmaker, scoped_session, Query
 
 from paramecium.database import TradeCalendar
 from paramecium.tools.data_api import get_tushare_api, get_sql_engine
@@ -46,27 +47,43 @@ class _BaseCrawlerJob(job.JobBase):
             'example_arguments': cls.meta_args_example
         }
 
-    @property
-    def logger(self):
-        return logging.getLogger(self.get_model_name())
+    @classmethod
+    def get_logger(cls):
+        return logging.getLogger(cls.get_model_name())
 
     @classmethod
+    @contextmanager
     def get_session(cls):
         if _BaseCrawlerJob._session_cls is None:
-            # _BaseCrawlerJob._session_cls = sessionmaker(bind=get_sql_engine(env='postgres', echo=True))  # , echo=True
-            session_factory = sessionmaker(bind=get_sql_engine(env='postgres'))  # , echo=True
+            session_factory = sessionmaker(bind=get_sql_engine(env='postgres', echo=True))  # , echo=True
             _BaseCrawlerJob._session_cls = scoped_session(session_factory)
-        return _BaseCrawlerJob._session_cls()
+
+        session = _BaseCrawlerJob._session_cls()
+        try:
+            yield session
+            session.commit()
+        except Exception as e:
+            cls.get_logger().warning(f'fail to truncate table before insert with {repr(e)}.')
+            session.rollback()
+        finally:
+            session.close()
+
+    def bulk_insert(self, records, model, msg=''):
+        if isinstance(records, pd.DataFrame):
+            records = [record.dropna().to_dict() for _, record in records.iterrows()]
+
+        with self.get_session() as session:
+            self.get_logger().info(f'start to bulk insert data {msg}...')
+            session.bulk_insert_mappings(model, records)
 
     def upsert_data(self, records, model, ukeys=None, msg=''):
         result_ids = []
-        session = self.get_session()
 
         if isinstance(records, pd.DataFrame):
             records = (record.dropna() for _, record in records.iterrows())
 
-        self.logger.info(f'start to upsert data {msg}...')
-        try:
+        with self.get_session() as session:
+            self.get_logger().info(f'start to upsert data {msg}...')
             for record in records:
                 insert_exe = insert(model).values(**record, updated_at=sa.text('current_timestamp'))
                 if ukeys:
@@ -76,38 +93,34 @@ class _BaseCrawlerJob(job.JobBase):
                     )
                 exe_result = session.execute(insert_exe)
                 result_ids.extend(exe_result.inserted_primary_key)
-        except Exception as e:
-            self.logger.warning(f'fail to insert data with {repr(e)}.')
-            session.rollback()
-        else:
-            session.commit()
-        finally:
-            session.close()
+
         return result_ids
 
-    def truncate_table(self, model):
-        name = model.__tablename__
-        session = self.get_session()
-        try:
-            self.logger.info(f'truncate table {name:s}.')
-            session.execute(f'truncate table {name:s};')
-        except Exception as e:
-            self.logger.warning(f'fail to truncate table before insert with {repr(e)}.')
-            session.rollback()
-        else:
-            session.commit()
-        finally:
-            session.close()
+    def clean_duplicates(self, model, unique_cols):
+        with self.get_session() as session:
+            labeled_cols = [c.label(c.key) for c in unique_cols]
+            pk = model.get_primary_key()[0]
+            grouped = Query(labeled_cols).group_by(unique_cols).having(sa.func.count(pk) > 1).subquery('g')
+            duplicates = pd.DataFrame(
+                session.query(
+                    pk, *labeled_cols
+                ).join(
+                    grouped, sa.and_(*(getattr(grouped.c, c.key) == c for c in unique_cols))
+                ).order_by(model.updated_at)
+            )
+            if not duplicates.empty:
+                duplicates = duplicates.loc[
+                    lambda df: df.duplicated(subset=[c.key for c in unique_cols], keep='last'), pk.key]
+                session.query(model).filter(pk.in_(duplicates.tolist())).delete(synchronize_session='fetch')
 
     @staticmethod
     @lru_cache()
     def get_dates(freq=None):
-        session = _BaseCrawlerJob.get_session()
-        query = session.query(TradeCalendar.trade_dt)
-        if freq:
-            query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}')==1)
-        dates = pd.to_datetime([i for row in query.all() for i in row])
-        session.close()
+        with _BaseCrawlerJob.get_session() as session:
+            query = session.query(TradeCalendar.trade_dt)
+            if freq:
+                query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}') == 1)
+            dates = pd.to_datetime([i for row in query.all() for i in row])
         return dates
 
     @property

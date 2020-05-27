@@ -2,18 +2,14 @@
 
 import logging
 
-#
 # Override settings
-#
 from paramecium.tools.data_api import get_data_config
 
 DEBUG = True
 HTTP_PORT = 7777
 HTTP_ADDRESS = '127.0.0.1'
 
-#
 # Set logging level
-#
 logging.getLogger().setLevel(logging.DEBUG)
 
 JOB_CLASS_PACKAGES = ['simple_scheduler.jobs']

@@ -26,22 +26,17 @@ class CalendarCrawler(TushareCrawlerJob):
 
     def run(self, pre_truncate=1, *args, **kwargs):
         if pre_truncate:
-            session = self.get_session()
-            try:
-                session.execute(f'truncate table {CalModel.__tablename__};')
-            except Exception as e:
-                logger.warning(f'{self.__class__.__name__:s} fail to truncate table before insert '
-                               f'with exception {repr(e)}.')
-                session.rollback()
-            else:
-                session.commit()
+            name = CalModel.__tablename__
+            with self.get_session() as session:
+                self.get_logger().info(f'truncate table {name:s}.')
+                session.execute(f'truncate table {name:s};')
 
-        self.logger.info('Getting data from tushare')
+        self.get_logger().info('Getting data from tushare')
         dates = self.get_tushare_data(api_name='trade_cal', exchange='SZSE', start_date='19000101')['trade_date']
         cal_df = expand_calendar(pd.to_datetime(dates, format='%Y%m%d'))
         cal_df.index.name = 'trade_dt'
 
-        self.logger.info('upsert data')
+        self.get_logger().info('upsert data')
         self.upsert_data(records=cal_df.reset_index(), model=CalModel, ukeys=[CalModel.trade_dt])
 
 

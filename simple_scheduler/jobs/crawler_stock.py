@@ -3,11 +3,10 @@
 @Time: 2020/5/9 14:40
 @Author: Sue Zhu
 """
-from functools import partial
-from itertools import combinations, product
+from itertools import product
 
+from paramecium.const import TradeStatus
 from paramecium.database import model_stock_org
-
 from simple_scheduler.jobs._crawler import *
 
 
@@ -40,23 +39,24 @@ class AShareDescription(TushareCrawlerJob):
         stock_info.loc[stock_info['list_dt'].isnull(), 'delist_dt'] = pd.NaT
 
         model = model_stock_org.AShareDescription
-        self.upsert_data(records=stock_info, model=model, ukeys=[model.wind_code])
+        self.upsert_data(records=stock_info, model=model, ukeys=model.get_primary_key())
 
 
 class _CrawlerEOD(TushareCrawlerJob):
 
     @property
     def model(self):
-        return NotImplementedError
+        return model_stock_org.AShareEODPrice
 
     def get_tushare_data_(self, **func_kwargs):
         return NotImplementedError
 
     def run(self, *args, **kwargs):
-        session = self.get_session()
-        max_dt = pd.to_datetime(session.query(
-            sa.func.max(self.model.trade_dt).label('max_dt')
-        ).one()[0]) - pd.Timedelta(days=5)
+        with self.get_session() as session:
+            max_dt = pd.to_datetime(session.query(
+                sa.func.max(self.model.trade_dt).label('max_dt')
+            ).one()[0]) - pd.Timedelta(days=5)
+
         if max_dt is pd.NaT:
             max_dt = pd.Timestamp('1990-01-01')
 
@@ -68,21 +68,18 @@ class _CrawlerEOD(TushareCrawlerJob):
                 # in case of data limit out.
                 price = pd.concat((price, self.get_tushare_data_(trade_date=f'{dt:%Y%m%d}')), axis=0)
             except Exception as e:
-                self.logger.error(f'error happends when run {repr(e)}')
+                self.get_logger().error(f'error happends when run {repr(e)}')
                 break
 
             if price.shape[0] > 10000:
-                self.upsert_data(
-                    records=price, model=self.model, ukeys=self.model.uk_cons.columns,
+                self.bulk_insert(
+                    records=price, model=self.model,
                     msg=f'stock price {i / len(trade_dates) * 100:.2f}%',
                 )
                 price = pd.DataFrame()
 
-        self.upsert_data(
-            records=price, model=self.model, ukeys=self.model.uk_cons.columns,
-            msg='stock price',
-        )
-        session.close()
+        self.bulk_insert(records=price, model=self.model)
+        self.clean_duplicates(self.model, [self.model.wind_code, self.model.trade_dt])
 
 
 class ASharePrice(_CrawlerEOD):
@@ -96,7 +93,7 @@ class ASharePrice(_CrawlerEOD):
         return model_stock_org.AShareEODPrice
 
     def get_tushare_data_(self, **func_kwargs):
-        self.logger.info(f'getting data from tushare: {func_kwargs}.')
+        self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
         mapping = {
             'ts_code': 'wind_code',
             'trade_date': 'trade_dt',
@@ -114,13 +111,7 @@ class ASharePrice(_CrawlerEOD):
             **func_kwargs
         )
         price.loc[:, 'trade_status'] = price['trade_status'].map({
-            '停牌': 0,
-            '交易': -1,
-            '待核查': -2,
-            'N': 4,  # 上市首日
-            'DR': 3,  # 除权除息
-            'XD': 2,  # 除息
-            'XR': 1,  # 除权
+            **TradeStatus.items(), '停牌': 0, '交易': -1, '待核查': -2,
         }).fillna(-2).astype(int)
         return price
 
@@ -146,43 +137,36 @@ class AShareSuspend(TushareCrawlerJob):
             },
             **func_kwargs
         )
-        data.loc[data['suspend_type'].eq('444003000'), 'resump_date'] = pd.Timestamp.max
+        data.loc[lambda df: df['suspend_type'].eq('444003000'), 'resume_date'] = pd.Timestamp.max
         return data
 
     def run(self, *args, **kwargs):
-        session = self.get_session()
+        with self.get_session() as session:
+            # select stocks still on
+            max_dt = pd.to_datetime(session.query(
+                sa.func.max(self.model.suspend_date).label('max_dt')
+            ).one()[0]) - pd.Timedelta(days=5)
 
-        # select stocks still on
-        max_dt = pd.to_datetime(session.query(
-            sa.func.max(self.model.suspend_date).label('max_dt')
-        ).one()[0]) - pd.Timedelta(days=5)
-
-        if max_dt is pd.NaT:
-            # data do not exist, download by stock code
-            stock_list = pd.DataFrame(
-                session.query(
-                    model_stock_org.AShareDescription.wind_code,
-                    model_stock_org.AShareDescription.list_dt,
-                ).all()
-            ).dropna()
-            for code in stock_list['wind_code']:
-                self.upsert_data(
-                    records=self.get_tushare_data(ts_code=code),
-                    model=self.model,
-                    ukeys=self.model.uk_cons.columns,
-                    msg=code
-                )
-        else:
-            # data exist, download by date
-            records = pd.concat(
-                (self.get_tushare_data(**{key: f'{dt:%Y%m%d}'}) for key, dt in product(
+            if max_dt is pd.NaT:
+                # data do not exist, download by stock code
+                stock_list = pd.DataFrame(
+                    session.query(
+                        model_stock_org.AShareDescription.wind_code,
+                        model_stock_org.AShareDescription.list_dt,
+                    ).all()
+                ).dropna()
+                query_params = (dict(ts_code=code) for code in stock_list['wind_code'])
+            else:
+                # data exist, download by date
+                query_params = ({key: f'{dt:%Y%m%d}'} for key, dt in product(
                     ('suspend_date', 'resume_date'),
                     (i for i in self.get_dates('D') if max_dt < i <= self.last_td_date)
                 ))
-            )
-            self.upsert_data(records=records, model=self.model, ukeys=self.model.uk_cons.columns)
 
-        session.close()
+        for q in query_params:
+            self.upsert_data(records=self.get_tushare_data(**q), model=self.model)
+
+        self.clean_duplicates(self.model, [self.model.suspend_date, self.model.suspend_type, self.model.wind_code])
 
 
 class AShareEODDerivativeIndicator(_CrawlerEOD):
@@ -196,7 +180,7 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
         return model_stock_org.AShareEODDerivativeIndicator
 
     def get_tushare_data_(self, **func_kwargs):
-        self.logger.info(f'getting data from tushare: {func_kwargs}.')
+        self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
 
         mapping = {
             'ts_code': 'wind_code',
@@ -272,7 +256,10 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
 
 
 if __name__ == '__main__':
+    from paramecium.database import create_all_table
+
+    create_all_table()
     # AShareDescription().run()
-    AShareEODDerivativeIndicator().run()
+    # AShareEODDerivativeIndicator().run()
     ASharePrice().run()
     AShareSuspend().run()

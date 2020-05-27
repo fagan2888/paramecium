@@ -18,6 +18,12 @@ class UniverseABC(object):
         return NotImplementedError
 
 
+class StockUniverse(UniverseABC):
+
+    def __init__(self):
+        pass
+
+
 class FundUniverse(UniverseABC):
 
     def __init__(self, include_=None, exclude_=None, initial_only=True, no_grad=True,
@@ -44,6 +50,5 @@ class FundUniverse(UniverseABC):
             filters.append(fund.MutualFundDescription.grad_type < 1)
         if self.open_only:
             filters.append(fund.MutualFundDescription.fund_type == '契约型开放式')
-
 
         # TODO: Size filter has not apply

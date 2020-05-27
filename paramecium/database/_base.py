@@ -8,13 +8,14 @@ from functools import partial
 import sqlalchemy as sa
 from sqlalchemy.ext.declarative import declarative_base
 
-from ..tools.data_api import get_tushare_api,get_sql_engine
+from ..tools.data_api import get_sql_engine
 
-CUR_TS = sa.text('current_timestamp')
+CUR_TS = sa.func.current_timestamp()
 
 BaseORM = declarative_base(
     cls=type('_DabaseMeta', (object,), {
-        'updated_at': sa.Column(sa.TIMESTAMP, server_default=CUR_TS, server_onupdate=CUR_TS)
+        'updated_at': sa.Column(sa.TIMESTAMP, server_default=CUR_TS, server_onupdate=CUR_TS),
+        'get_primary_key': classmethod(lambda cls: cls._sa_class_manager.mapper.primary_key)
     })
 )
 

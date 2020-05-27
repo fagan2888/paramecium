@@ -49,7 +49,7 @@ class AShareEODPrice(BaseORM):
 
     oid = sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
-    trade_dt = sa.Column(sa.Date)  # 交易日期 trade_date
+    trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
     open_ = sa.Column(pg.REAL)  # 开盘价(元) open
     high_ = sa.Column(pg.REAL)  # 最高价(元) high
     low_ = sa.Column(pg.REAL)  # 最低价(元) low
@@ -60,7 +60,7 @@ class AShareEODPrice(BaseORM):
     avg_price = sa.Column(pg.REAL)  # 均价(VWAP)
     trade_status = sa.Column(sa.Integer, index=True)  # 交易状态
 
-    uk_cons = sa.UniqueConstraint(trade_dt, wind_code, name=f'uk_{__tablename__}_dt_code')
+    # uk_cons = sa.UniqueConstraint(trade_dt, wind_code, name=f'uk_{__tablename__}_dt_code')
 
 
 class AShareSuspend(BaseORM):
@@ -93,14 +93,12 @@ class AShareSuspend(BaseORM):
 
     oid = sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
-    suspend_date = sa.Column(sa.Date)  # 停牌日期
+    suspend_date = sa.Column(sa.Date, index=True)  # 停牌日期
     suspend_type = sa.Column(sa.Integer, index=True)  # 停牌类型代码
-    resume_date = sa.Column(sa.Date)  # 复牌日期 resump_date
-    change_reason = sa.Column(sa.String(100))  # 停牌原因
+    resume_date = sa.Column(sa.Date, index=True)  # 复牌日期 resump_date
+    change_reason = sa.Column(sa.String(40))  # 停牌原因
     suspend_time = sa.Column(sa.String(100))  # 停复牌时间
-    reason_type = sa.Column(sa.String())  # 停牌原因代码 change_reason_type
-
-    uk_cons = sa.UniqueConstraint(suspend_date, suspend_type, wind_code, name=f'uk_{__tablename__}_dt_code')
+    reason_type = sa.Column(sa.String(40))  # 停牌原因代码 change_reason_type
 
 
 class AShareEODDerivativeIndicator(BaseORM):
@@ -112,7 +110,7 @@ class AShareEODDerivativeIndicator(BaseORM):
     oid = sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
 
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
-    trade_dt = sa.Column(sa.Date)  # 交易日期 trade_date
+    trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
 
     pe = sa.Column(pg.REAL)  # 市盈率(PE)(总市值/净利润(若净利润<=0,则返回空))
     pb_new = sa.Column(pg.REAL)  # 市净率(PB)(总市值/净资产(LF))
@@ -134,7 +132,7 @@ class AShareEODDerivativeIndicator(BaseORM):
     price_div_dps = sa.Column(pg.REAL)  # 股价/每股派息
 
     close = sa.Column(pg.REAL)  # 当日收盘价
-    suspend_status = sa.Column(sa.Integer)  # 涨跌停状态(1表示涨停;0表示非涨停或跌停;-1表示跌停) up_down_limit_status
+    suspend_status = sa.Column(sa.Integer, index=True)  # 涨跌停状态(1表示涨停;0表示非涨停或跌停;-1表示跌停) up_down_limit_status
 
     price_high_52w = sa.Column(pg.REAL)  # 52周最高价 high_52w
     price_low_52w = sa.Column(pg.REAL)  # 52周最低价 low_52w
@@ -151,8 +149,6 @@ class AShareEODDerivativeIndicator(BaseORM):
     net_increase_cash_equ_ttm = sa.Column(pg.REAL)  # 现金及现金等价物净增加额(TTM) net_incr_cash_cash_equ_ttm
     net_increase_cash_equ_lyr = sa.Column(pg.REAL)  # 现金及现金等价物净增加额(LYR) net_incr_cash_cash_equ_lyr
 
-    uk_cons = sa.UniqueConstraint(trade_dt, wind_code, name=f'uk_{__tablename__}_dt_code')
-
 
 class AShareSector(BaseORM):
     """
@@ -165,8 +161,6 @@ class AShareSector(BaseORM):
     oid = sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
 
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
-    sector_code = sa.Column(sa.String())  # 中证行业代码 index_code
-    entry_dt = sa.Column(sa.String())  # 纳入日期 entry_dt
-    remove_dt = sa.Column(sa.String())  # 剔除日期 remove_dt
-
-    uk_cons = sa.UniqueConstraint(entry_dt, wind_code, sector_code, name=f'uk_{__tablename__}_dt_code')
+    sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code
+    entry_dt = sa.Column(sa.Date)  # 纳入日期 entry_dt
+    remove_dt = sa.Column(sa.Date)  # 剔除日期 remove_dt
