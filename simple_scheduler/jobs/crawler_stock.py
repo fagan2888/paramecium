@@ -137,7 +137,7 @@ class AShareSuspend(TushareCrawlerJob):
             },
             **func_kwargs
         )
-        data.loc[lambda df: df['suspend_type'].eq('444003000'), 'resume_date'] = pd.Timestamp.max
+        data.loc[lambda df: df['suspend_type'].eq(444003000), 'resume_date'] = pd.Timestamp.max
         return data
 
     def run(self, *args, **kwargs):
@@ -164,7 +164,7 @@ class AShareSuspend(TushareCrawlerJob):
                 ))
 
         for q in query_params:
-            self.upsert_data(records=self.get_tushare_data(**q), model=self.model)
+            self.bulk_insert(records=self.get_tushare_data(**q), model=self.model)
 
         self.clean_duplicates(self.model, [self.model.suspend_date, self.model.suspend_type, self.model.wind_code])
 
@@ -259,7 +259,7 @@ if __name__ == '__main__':
     from paramecium.database import create_all_table
 
     create_all_table()
-    # AShareDescription().run()
-    # AShareEODDerivativeIndicator().run()
+    AShareDescription().run()
+    AShareEODDerivativeIndicator().run()
     ASharePrice().run()
     AShareSuspend().run()

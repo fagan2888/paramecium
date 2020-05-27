@@ -3,11 +3,20 @@
 @Time: 2020/2/11 15:58
 @Author: Sue Zhu
 """
-__all__ = ['AbstractFactor']
+__all__ = ['AbstractFactor', 'AbstractUniverse']
 
 import abc
 
+from .const import FreqEnum
 from .utils import camel2snake
+
+
+class AbstractUniverse(metaclass=abc.ABCMeta):
+    """ Universe Interface """
+
+    @abc.abstractmethod
+    def get_instruments(self, dt):
+        return NotImplementedError
 
 
 class AbstractFactor(metaclass=abc.ABCMeta):
@@ -22,6 +31,5 @@ class AbstractFactor(metaclass=abc.ABCMeta):
         return NotImplementedError
 
 
-def calculate_and_saving_factor(factor_class, start_date, end_date):
+def calculate_and_saving_factor(factor, start_date, end_date, freq=FreqEnum.D):
     pass
-

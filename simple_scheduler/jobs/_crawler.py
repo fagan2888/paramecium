@@ -63,7 +63,7 @@ class _BaseCrawlerJob(job.JobBase):
             yield session
             session.commit()
         except Exception as e:
-            cls.get_logger().warning(f'fail to truncate table before insert with {repr(e)}.')
+            cls.get_logger().warning(repr(e))
             session.rollback()
         finally:
             session.close()
@@ -85,11 +85,11 @@ class _BaseCrawlerJob(job.JobBase):
         with self.get_session() as session:
             self.get_logger().info(f'start to upsert data {msg}...')
             for record in records:
-                insert_exe = insert(model).values(**record, updated_at=sa.text('current_timestamp'))
+                insert_exe = insert(model).values(**record)
                 if ukeys:
+                    set_ = {k: sa.text(f'EXCLUDED.{k}') for k in {*record.keys()} - {*(c.key for c in ukeys)}}
                     insert_exe = insert_exe.on_conflict_do_update(
-                        index_elements=ukeys,
-                        set_={k: sa.text(f'EXCLUDED.{k}') for k in record.keys() if k not in (c.key for c in ukeys)}
+                        index_elements=ukeys, set_={**set_, 'updated_at': sa.func.current_timestamp()}
                     )
                 exe_result = session.execute(insert_exe)
                 result_ids.extend(exe_result.inserted_primary_key)

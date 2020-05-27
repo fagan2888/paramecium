@@ -44,12 +44,6 @@ def get_sql_engine(env='postgres', **kwargs):
     return create_engine(URL(**get_data_config(env)), **params)
 
 
-def get_session_factory(env='postgres'):
-    session_factory = sessionmaker(bind=get_sql_engine(env))
-    Session = scoped_session(session_factory)
-    return Session
-
-
 @contextmanager
 def get_ifind_api():
     from iFinDPy import THS_iFinDLogin, THS_iFinDLogout
