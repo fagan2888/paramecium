@@ -10,7 +10,6 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.orm import sessionmaker, scoped_session
-from iFinDPy import THS_iFinDLogin, THS_iFinDLogout
 
 def get_data_config(section):
     """
@@ -49,6 +48,7 @@ def get_session_factory(env='postgres'):
 
 @contextmanager
 def get_ifind_api():
+    from iFinDPy import THS_iFinDLogin, THS_iFinDLogout
     err_code = THS_iFinDLogin(**get_data_config('ifind'))
     if err_code == '2':
         print("iFind API has an error!")

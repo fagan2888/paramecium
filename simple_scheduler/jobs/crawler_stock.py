@@ -3,69 +3,100 @@
 @Time: 2020/5/9 14:40
 @Author: Sue Zhu
 """
+from functools import partial
+from itertools import combinations, product
 
-from paramecium.database import model_stock_org, TradeCalendar
+from paramecium.database import model_stock_org
 
 from simple_scheduler.jobs._crawler import *
-
-logger = logging.getLogger(__name__)
 
 
 class AShareDescription(TushareCrawlerJob):
     """
     Crawling stock description from tushare
+    http://tushare.xcsc.com:7173/document/2?doc_id=25
     """
 
     _COL = {
         'ts_code': 'wind_code',
         'name': 'short_name',
-        'comp_name': 'comp_name',
-        'comp_name_en': 'comp_name_en',
-        'isin_code': 'isin_code',
-        'exchange': 'exchange',
-        'list_board': 'list_board',
         'list_date': 'list_dt',
         'delist_date': 'delist_dt',
         'crncy_code': 'currency',
-        'pinyin': 'pinyin',
-        'is_shsc': 'is_shsc',
-        'comp_code': 'comp_code',
     }
 
     def run(self, *args, **kwargs):
         stock_info = pd.concat((
             self.get_tushare_data(
                 api_name='stock_basic',
-                exchange=exchange, fields=','.join(self._COL.keys())
+                exchange=exchange,
+                fields=','.join((*self._COL.keys(), 'comp_name', 'comp_name_en', 'isin_code', 'exchange', 'list_board',
+                                 'pinyin', 'is_shsc', 'comp_code'))
             ) for exchange in ('SSE', 'SZSE')
         )).rename(columns=self._COL).fillna(np.nan)
         stock_info.loc[:, 'list_dt'] = pd.to_datetime(stock_info['list_dt'])
         stock_info.loc[:, 'delist_dt'] = pd.to_datetime(stock_info['delist_dt'])
-        stock_info.loc[lambda df: df['list_dt'].notnull()&df['delist_dt'].isnull(), 'delist_dt'] = pd.Timestamp.max
+        stock_info.loc[lambda df: df['list_dt'].notnull() & df['delist_dt'].isnull(), 'delist_dt'] = pd.Timestamp.max
         stock_info.loc[stock_info['list_dt'].isnull(), 'delist_dt'] = pd.NaT
 
         model = model_stock_org.AShareDescription
         self.upsert_data(records=stock_info, model=model, ukeys=[model.wind_code])
 
 
-class ASharePrice(TushareCrawlerJob):
-    """
-    Crawling stock end-of-date price from tushare
-    """
+class _CrawlerEOD(TushareCrawlerJob):
+
+    @property
+    def model(self):
+        return NotImplementedError
+
+    def get_tushare_data_(self, **func_kwargs):
+        return NotImplementedError
 
     def run(self, *args, **kwargs):
-        model = model_stock_org.AShareEODPrice
-        max_dt = pd.to_datetime(self.sa_session.query(sa.func.max(model.trade_dt).label('max_dt')).one()[0])
-        if not max_dt:
+        session = self.get_session()
+        max_dt = pd.to_datetime(session.query(
+            sa.func.max(self.model.trade_dt).label('max_dt')
+        ).one()[0]) - pd.Timedelta(days=5)
+        if max_dt is pd.NaT:
             max_dt = pd.Timestamp('1990-01-01')
 
-        trade_dates = [i for row in self.sa_session.query(
-            TradeCalendar.trade_dt
-        ).filter(
-            TradeCalendar.is_d == 1,
-            TradeCalendar.trade_dt > max_dt - pd.Timedelta(days=5),
-            TradeCalendar.trade_dt < self.last_td_date,
-        ).all() for i in row]
+        last_dt = self.last_td_date
+        trade_dates = [i for i in self.get_dates('D') if max_dt < i <= last_dt]
+        price = pd.DataFrame()
+        for i, dt in enumerate(trade_dates):
+            try:
+                # in case of data limit out.
+                price = pd.concat((price, self.get_tushare_data_(trade_date=f'{dt:%Y%m%d}')), axis=0)
+            except Exception as e:
+                self.logger.error(f'error happends when run {repr(e)}')
+                break
+
+            if price.shape[0] > 10000:
+                self.upsert_data(
+                    records=price, model=self.model, ukeys=self.model.uk_cons.columns,
+                    msg=f'stock price {i / len(trade_dates) * 100:.2f}%',
+                )
+                price = pd.DataFrame()
+
+        self.upsert_data(
+            records=price, model=self.model, ukeys=self.model.uk_cons.columns,
+            msg='stock price',
+        )
+        session.close()
+
+
+class ASharePrice(_CrawlerEOD):
+    """
+    Crawling stock end-of-date price from tushare
+    http://tushare.xcsc.com:7173/document/2?doc_id=27
+    """
+
+    @property
+    def model(self):
+        return model_stock_org.AShareEODPrice
+
+    def get_tushare_data_(self, **func_kwargs):
+        self.logger.info(f'getting data from tushare: {func_kwargs}.')
         mapping = {
             'ts_code': 'wind_code',
             'trade_date': 'trade_dt',
@@ -76,37 +107,119 @@ class ASharePrice(TushareCrawlerJob):
             'volume': 'volume_',
             'amount': 'amount_',
         }
-        price = pd.DataFrame()
-        for i, dt in enumerate(trade_dates):
-            try:
-                self.logger.info(f'getting {dt:%Y-%m-%d} nav from tushare')
-                price = pd.concat((
-                    price,
-                    self.get_tushare_data(
-                        'daily',
-                        date_cols=['trade_date'],
-                        org_cols=[*mapping.keys(), 'adj_factor', 'avg_price', 'trade_status'],
-                        col_mapping=mapping,
-                        trade_date=f'{dt:%Y%m%d}'
-                    )
-                ), axis=0)
-            except Exception as e:
-                self.logger.error(f'error happends when run {repr(e)}')
-                break
-
-            if price.shape[0] > 10000:
-                self.upsert_data(
-                    records=price, model=model,
-                    ukeys=[model.wind_code, model.trade_dt],
-                    msg=f'stock price {i / len(trade_dates) * 100:.2f}%',
-                )
-                price = pd.DataFrame()
-
-        self.upsert_data(
-            records=price, model=model,
-            ukeys=[model.wind_code, model.trade_dt],
-            msg='stock price',
+        price = super().get_tushare_data(
+            api_name='daily',
+            date_cols=['trade_date'], col_mapping=mapping,
+            org_cols=[*mapping.keys(), 'adj_factor', 'avg_price', 'trade_status'],
+            **func_kwargs
         )
+        price.loc[:, 'trade_status'] = price['trade_status'].map({
+            '停牌': 0,
+            '交易': -1,
+            '待核查': -2,
+            'N': 4,  # 上市首日
+            'DR': 3,  # 除权除息
+            'XD': 2,  # 除息
+            'XR': 1,  # 除权
+        }).fillna(-2).astype(int)
+        return price
+
+
+class AShareSuspend(TushareCrawlerJob):
+    """
+    Crawling stock suspend info from tushare
+    http://tushare.xcsc.com:7173/document/2?doc_id=31
+    """
+
+    @property
+    def model(self):
+        return model_stock_org.AShareSuspend
+
+    def get_tushare_data(self, **func_kwargs):
+        data = super().get_tushare_data(
+            api_name='suspend',
+            date_cols=['suspend_date', 'resump_date'],
+            col_mapping={
+                'ts_code': 'wind_code',
+                'resump_date': 'resume_date',
+                'change_reason_type': 'reason_type',
+            },
+            **func_kwargs
+        )
+        data.loc[data['suspend_type'].eq('444003000'), 'resump_date'] = pd.Timestamp.max
+        return data
+
+    def run(self, *args, **kwargs):
+        session = self.get_session()
+
+        # select stocks still on
+        max_dt = pd.to_datetime(session.query(
+            sa.func.max(self.model.suspend_date).label('max_dt')
+        ).one()[0]) - pd.Timedelta(days=5)
+
+        if max_dt is pd.NaT:
+            # data do not exist, download by stock code
+            stock_list = pd.DataFrame(
+                session.query(
+                    model_stock_org.AShareDescription.wind_code,
+                    model_stock_org.AShareDescription.list_dt,
+                ).all()
+            ).dropna()
+            for code in stock_list['wind_code']:
+                self.upsert_data(
+                    records=self.get_tushare_data(ts_code=code),
+                    model=self.model,
+                    ukeys=self.model.uk_cons.columns,
+                    msg=code
+                )
+        else:
+            # data exist, download by date
+            records = pd.concat(
+                (self.get_tushare_data(**{key: f'{dt:%Y%m%d}'}) for key, dt in product(
+                    ('suspend_date', 'resume_date'),
+                    (i for i in self.get_dates('D') if max_dt < i <= self.last_td_date)
+                ))
+            )
+            self.upsert_data(records=records, model=self.model, ukeys=self.model.uk_cons.columns)
+
+        session.close()
+
+
+class AShareEODDerivativeIndicator(_CrawlerEOD):
+    """
+    Crawling stock end-of-date price from tushare
+    http://tushare.xcsc.com:7173/document/2?doc_id=32
+    """
+
+    @property
+    def model(self):
+        return model_stock_org.AShareEODDerivativeIndicator
+
+    def get_tushare_data_(self, **func_kwargs):
+        self.logger.info(f'getting data from tushare: {func_kwargs}.')
+
+        mapping = {
+            'ts_code': 'wind_code',
+            'trade_date': 'trade_dt',
+            'tot_shr': 'share_tot',
+            'float_a_shr': 'share_float',
+            'free_shares': 'share_free',
+            'turn': 'turnover',
+            'free_turnover': 'turnover_free',
+            'up_down_limit_status': 'suspend_status',
+            'net_incr_cash_cash_equ_ttm': 'net_increase_cash_equ_ttm',
+            'net_incr_cash_cash_equ_lyr': 'net_increase_cash_equ_lyr',
+        }
+        price = super().get_tushare_data(
+            api_name='daily_basic',
+            date_cols=['trade_date'], col_mapping=mapping,
+            org_cols=[*mapping.keys(), 'pe', 'pb_new', 'pe_ttm', 'pcf_ocf', 'pcf_ocf_ttm', 'pcf_ncf', 'pcf_ncf_ttm',
+                      'ps', 'ps_ttm', 'price_div_dps', 'close', 'price_high_52w', 'price_low_52w', 'adj_high_52w',
+                      'adj_low_52w', 'net_assets', 'net_profit_parent_comp_ttm', 'net_profit_parent_comp_lyr',
+                      'net_cash_flows_oper_act_ttm', 'net_cash_flows_oper_act_lyr', 'oper_rev_ttm', 'oper_rev_lyr'],
+            **func_kwargs
+        )
+        return price
 
 
 # class AShareAnnouncement(WebCrawlerJob):
@@ -159,5 +272,7 @@ class ASharePrice(TushareCrawlerJob):
 
 
 if __name__ == '__main__':
-    AShareDescription().run()
+    # AShareDescription().run()
+    AShareEODDerivativeIndicator().run()
     ASharePrice().run()
+    AShareSuspend().run()

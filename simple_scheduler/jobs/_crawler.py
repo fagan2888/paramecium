@@ -5,6 +5,7 @@
 """
 import logging
 import random
+from functools import lru_cache
 from uuid import uuid4
 
 import numpy as np
@@ -15,7 +16,8 @@ from requests import request
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker, scoped_session
 
-from paramecium.tools.db_source import get_tushare_api, get_sql_engine
+from paramecium.database import TradeCalendar
+from paramecium.tools.data_api import get_tushare_api, get_sql_engine
 
 
 class _BaseCrawlerJob(job.JobBase):
@@ -48,16 +50,17 @@ class _BaseCrawlerJob(job.JobBase):
     def logger(self):
         return logging.getLogger(self.get_model_name())
 
-    @property
-    def sa_session(self):
+    @classmethod
+    def get_session(cls):
         if _BaseCrawlerJob._session_cls is None:
+            # _BaseCrawlerJob._session_cls = sessionmaker(bind=get_sql_engine(env='postgres', echo=True))  # , echo=True
             session_factory = sessionmaker(bind=get_sql_engine(env='postgres'))  # , echo=True
             _BaseCrawlerJob._session_cls = scoped_session(session_factory)
         return _BaseCrawlerJob._session_cls()
 
     def upsert_data(self, records, model, ukeys=None, msg=''):
         result_ids = []
-        session = self.sa_session
+        session = self.get_session()
 
         if isinstance(records, pd.DataFrame):
             records = (record.dropna() for _, record in records.iterrows())
@@ -78,11 +81,13 @@ class _BaseCrawlerJob(job.JobBase):
             session.rollback()
         else:
             session.commit()
+        finally:
+            session.close()
         return result_ids
 
     def truncate_table(self, model):
         name = model.__tablename__
-        session = self.sa_session
+        session = self.get_session()
         try:
             self.logger.info(f'truncate table {name:s}.')
             session.execute(f'truncate table {name:s};')
@@ -91,17 +96,26 @@ class _BaseCrawlerJob(job.JobBase):
             session.rollback()
         else:
             session.commit()
+        finally:
+            session.close()
+
+    @staticmethod
+    @lru_cache()
+    def get_dates(freq=None):
+        session = _BaseCrawlerJob.get_session()
+        query = session.query(TradeCalendar.trade_dt)
+        if freq:
+            query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}')==1)
+        dates = pd.to_datetime([i for row in query.all() for i in row])
+        session.close()
+        return dates
 
     @property
     def last_td_date(self):
         cur_date = pd.Timestamp.now()
         if cur_date.hour <= 22:
             cur_date -= pd.Timedelta(days=1)
-        date_from_db = pd.read_sql(
-            f"select max(trade_dt) from trade_calendar where is_d=1 and trade_dt<='{cur_date:%Y-%m-%d}'",
-            self.sa_session.bind
-        ).squeeze()
-        return date_from_db
+        return max((t for t in self.get_dates('D') if t <= cur_date))
 
 
 class TushareCrawlerJob(_BaseCrawlerJob):

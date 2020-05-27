@@ -26,7 +26,7 @@ class CalendarCrawler(TushareCrawlerJob):
 
     def run(self, pre_truncate=1, *args, **kwargs):
         if pre_truncate:
-            session = self.sa_session
+            session = self.get_session()
             try:
                 session.execute(f'truncate table {CalModel.__tablename__};')
             except Exception as e:

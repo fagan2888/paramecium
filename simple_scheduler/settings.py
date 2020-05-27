@@ -5,7 +5,7 @@ import logging
 #
 # Override settings
 #
-from paramecium.tools.db_source import get_data_config
+from paramecium.tools.data_api import get_data_config
 
 DEBUG = True
 HTTP_PORT = 7777

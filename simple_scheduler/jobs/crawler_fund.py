@@ -118,7 +118,7 @@ class FundNav(TushareCrawlerJob):
                 t.max_dt < t.maturity_date
                 and t.setup_date > date('1900-01-01')
             """,
-            self.sa_session.bind, parse_dates=['max_dt'], index_col=['wind_code']
+            self._session_cls.bind, parse_dates=['max_dt'], index_col=['wind_code']
         ).squeeze().loc[lambda ser: ser.index.str.len() < 10]
         max_dts -= pd.Timedelta(days=7)
 
@@ -146,7 +146,7 @@ class FundNav(TushareCrawlerJob):
                 break
 
             if nav.shape[0] > 10000:
-                nav = self.upsert_nav(nav, i/max_dts.shape[0])
+                nav = self.upsert_nav(nav, i / max_dts.shape[0])
 
         if nav.shape[0]:
             nav = self.upsert_nav(nav, 1)
@@ -156,7 +156,7 @@ class FundNav(TushareCrawlerJob):
             records=nav.drop(self._aum_cols, axis=1, errors='ignore'),
             model=model_fund_org.MutualFundNav,
             ukeys=[model_fund_org.MutualFundNav.wind_code, model_fund_org.MutualFundNav.trade_dt],
-            msg=f'fund navs({pct*100:.2f}%)',
+            msg=f'fund navs({pct * 100:.2f}%)',
         )
         aum = nav.loc[:, ['oid', *self._aum_cols]].dropna(subset=self._aum_cols, how='all')
         if aum.shape[0]:
@@ -184,7 +184,7 @@ class FundManager(TushareCrawlerJob):
     def run(self, *args, **kwargs):
         model = model_fund_org.MutualFundManager
         fund_list = pd.DataFrame(
-            self.sa_session.query(model_fund_org.MutualFundDescription.wind_code)
+            self.get_session().query(model_fund_org.MutualFundDescription.wind_code)
         ).squeeze()
         for funds in chunk(fund_list, 100):
             managers = self.get_tushare_data(
