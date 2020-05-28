@@ -4,39 +4,23 @@
 @Author: Sue Zhu
 """
 __all__ = [
-    'create_all_table',
-    'get_dates',
+    'create_all_table', 'get_session', 'get_sql_engine',
+    'get_dates','last_td_date',
     'StockUniverse', 'FundUniverse',
 ]
 
-from contextlib import contextmanager
 from functools import lru_cache
 
 import pandas as pd
-from sqlalchemy.orm import sessionmaker, scoped_session
 
-from . import model_fund_org, model_stock_org, model_const
-from ._base import TradeCalendar, create_all_table
-from ..const import *
-from ..interface import AbstractUniverse
-from ..tools.data_api import get_sql_engine
-
-_Sa_Session = scoped_session(sessionmaker(bind=get_sql_engine(env='postgres')))
+from paramecium.const import *
+from paramecium.database import model_fund_org, model_stock_org, model_const, get_session
+from paramecium.database.model_market import TradeCalendar
+from paramecium.database.utils import create_all_table, get_session, get_sql_engine
+from paramecium.interface import AbstractUniverse
 
 
-@contextmanager
-def get_session():
-    session = _Sa_Session()
-    try:
-        yield session
-        session.commit()
-    except Exception as e:
-        session.rollback()
-    finally:
-        session.close()
-
-
-def _flat_1dim_data(folder_data):
+def _flat_1dim(folder_data):
     return (entry for record in folder_data for entry in record)
 
 
@@ -49,10 +33,18 @@ def get_dates(freq=None):
             if isinstance(freq, FreqEnum):
                 freq = freq.name
             query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}'))
-        data = _flat_1dim_data(query.all())
+        data = _flat_1dim(query.all())
     return pd.to_datetime(list(data))
 
 
+def last_td_date():
+    cur_date = pd.Timestamp.now()
+    if cur_date.hour <= 22:
+        cur_date -= pd.Timedelta(days=1)
+    return max((t for t in get_dates(freq=FreqEnum.D) if t <= cur_date))
+
+
+@lru_cache()
 class StockUniverse(AbstractUniverse):
 
     def __init__(self, issue_month=12, no_st=True, no_suspend=True):
@@ -60,6 +52,7 @@ class StockUniverse(AbstractUniverse):
         self.no_st = no_st
         self.no_suspend = no_suspend
 
+    @lru_cache(maxsize=2)
     def get_instruments(self, dt):
         with get_session() as session:
             query_desc = session.query(
@@ -76,9 +69,10 @@ class StockUniverse(AbstractUniverse):
             ).all()
             # TODO: need data to clean st stock
 
-        return {*_flat_1dim_data(query_desc)} - {*_flat_1dim_data(query_trade)}
+        return {*_flat_1dim(query_desc)} - {*_flat_1dim(query_trade)}
 
 
+@lru_cache()
 class FundUniverse(AbstractUniverse):
 
     def __init__(self, include_=None, exclude_=None, initial_only=True, no_grad=True,
@@ -106,3 +100,12 @@ class FundUniverse(AbstractUniverse):
         #
         # TODO: Size filter has not apply
         pass
+
+
+def get_price(asset:AssetEnum, start=None, end=None, codes=None, fields=None):
+    if asset == AssetEnum.STOCK:
+        with get_session() as session:
+            price_df = pd.DataFrame(
+
+            )
+

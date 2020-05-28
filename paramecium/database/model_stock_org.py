@@ -10,7 +10,7 @@ codes = tb.apply(lambda ser: f"{ser['名称']} = sa.Column(sa.String())  # {ser[
 codes.to_clipboard(index=False)
 
 """
-from ._base import *
+from .utils import *
 import sqlalchemy.dialects.postgresql as pg
 
 

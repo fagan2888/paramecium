@@ -5,7 +5,7 @@
 """
 from sqlalchemy.dialects.postgresql import UUID
 
-from ._base import *
+from .utils import *
 
 
 class MutualFundDescription(BaseORM):

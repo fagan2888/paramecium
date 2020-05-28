@@ -5,7 +5,6 @@
 """
 import logging
 import random
-from contextlib import contextmanager
 from functools import lru_cache
 from uuid import uuid4
 
@@ -15,10 +14,10 @@ import sqlalchemy as sa
 from ndscheduler.corescheduler import job
 from requests import request
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import sessionmaker, scoped_session, Query
+from sqlalchemy.orm import Query
 
-from paramecium.database import TradeCalendar
-from paramecium.tools.data_api import get_tushare_api, get_sql_engine
+from paramecium.database import TradeCalendar, get_session
+from paramecium.utils.data_api import get_tushare_api
 
 
 class _BaseCrawlerJob(job.JobBase):
@@ -52,21 +51,8 @@ class _BaseCrawlerJob(job.JobBase):
         return logging.getLogger(cls.get_model_name())
 
     @classmethod
-    @contextmanager
     def get_session(cls):
-        if _BaseCrawlerJob._session_cls is None:
-            session_factory = sessionmaker(bind=get_sql_engine(env='postgres', echo=True))  # , echo=True
-            _BaseCrawlerJob._session_cls = scoped_session(session_factory)
-
-        session = _BaseCrawlerJob._session_cls()
-        try:
-            yield session
-            session.commit()
-        except Exception as e:
-            cls.get_logger().warning(repr(e))
-            session.rollback()
-        finally:
-            session.close()
+        return get_session()
 
     def bulk_insert(self, records, model, msg=''):
         if isinstance(records, pd.DataFrame):

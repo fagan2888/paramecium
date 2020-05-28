@@ -10,7 +10,7 @@ import pandas as pd
 from requests import request
 
 from paramecium.database import model_fund_org, create_all_table
-from paramecium.utils import chunk
+from paramecium.utils.__init__ import chunk
 from simple_scheduler.jobs._crawler import TushareCrawlerJob, WebCrawlerJob
 
 

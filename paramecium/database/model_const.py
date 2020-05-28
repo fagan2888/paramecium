@@ -3,7 +3,7 @@
 @Time: 2020/5/10 17:55
 @Author: Sue Zhu
 """
-from ._base import *
+from .utils import *
 
 
 class EnumIndustryCode(BaseORM):
