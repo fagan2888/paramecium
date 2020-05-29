@@ -15,3 +15,10 @@ class EnumIndustryCode(BaseORM):
     memo = sa.Column(sa.String)
 
 
+class EnumTypeCode(BaseORM):
+    __tablename__ = 'enum_type_code'
+
+    type_code = sa.Column(sa.String(40), primary_key=True)
+    type_name = sa.Column(sa.String(300))
+    present_column = sa.Column(sa.String(100), index=True)
+

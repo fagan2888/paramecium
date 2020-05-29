@@ -12,19 +12,12 @@ codes.to_clipboard(index=False)
 """
 from .utils import *
 import sqlalchemy.dialects.postgresql as pg
-
+from uuid import uuid1
+uuid1()
 
 class AShareDescription(BaseORM):
     """
     A股基本资料
-
-    - list_board
-        434001000:创业板
-        434003000:中小企业板
-        434004000:主板
-        434005000:退市整理股票
-        434006000:风险警示股票
-        434009000:科创板
     """
     __tablename__ = 'stock_org_description'
 
@@ -47,7 +40,7 @@ class AShareEODPrice(BaseORM):
     """ 中国A股日行情 """
     __tablename__ = 'stock_org_price'
 
-    oid = sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
     open_ = sa.Column(pg.REAL)  # 开盘价(元) open
@@ -60,38 +53,12 @@ class AShareEODPrice(BaseORM):
     avg_price = sa.Column(pg.REAL)  # 均价(VWAP)
     trade_status = sa.Column(sa.Integer, index=True)  # 交易状态
 
-    # uk_cons = sa.UniqueConstraint(trade_dt, wind_code, name=f'uk_{__tablename__}_dt_code')
-
 
 class AShareSuspend(BaseORM):
-    """
-    A股停复牌信息
-    http://tushare.xcsc.com:7173/document/2?doc_id=31
-
-    - suspend_type 停牌类型
-        444001000:上午停牌
-        444002000:下午停牌
-        444003000:今起停牌
-        444004000:盘中停牌
-        444007000:停牌1小时
-        444016000:停牌一天
-
-    - 停牌原因代码 reason_type
-        204023001: 重大资产重组停牌
-        204023002: 披露重大信息停牌
-        204023003: 召开股东大会停牌
-        204023004: 公共媒体报道停牌
-        204023005: 股票价格异常波动停牌
-        204023007: 定期报告延期披露停牌
-        204023008: 重大差错拒不改正停牌
-        204023009: 违法违规被查停牌
-        204023010: 违反交易所规则停牌
-        204023012: 要约收购停牌
-        204023013: 风险警示停牌
-    """
+    """ A股停复牌信息 """
     __tablename__ = 'stock_org_suspend'
 
-    oid = sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     suspend_date = sa.Column(sa.Date, index=True)  # 停牌日期
     suspend_type = sa.Column(sa.Integer, index=True)  # 停牌类型代码
@@ -102,12 +69,10 @@ class AShareSuspend(BaseORM):
 
 
 class AShareEODDerivativeIndicator(BaseORM):
-    """
-    A股停复牌信息
-    """
+    """ A股日行情估值指标 """
     __tablename__ = 'stock_org_eod_derivative'
 
-    oid = sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
+    oid = gen_oid()
 
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
@@ -132,20 +97,21 @@ class AShareEODDerivativeIndicator(BaseORM):
     price_div_dps = sa.Column(pg.REAL)  # 股价/每股派息
 
     close = sa.Column(pg.REAL)  # 当日收盘价
-    suspend_status = sa.Column(sa.Integer, index=True)  # 涨跌停状态(1表示涨停;0表示非涨停或跌停;-1表示跌停) up_down_limit_status
+    suspend_status = sa.Column(sa.Integer, index=True)
+    # 涨跌停状态(1表示涨停;0表示非涨停或跌停;-1表示跌停) up_down_limit_status
 
     price_high_52w = sa.Column(pg.REAL)  # 52周最高价 high_52w
     price_low_52w = sa.Column(pg.REAL)  # 52周最低价 low_52w
     adj_high_52w = sa.Column(pg.REAL)  # 52周最高价(复权) adj_high_52w
     adj_low_52w = sa.Column(pg.REAL)  # 52周最低价(复权) adj_low_52w
 
-    net_assets = sa.Column(pg.REAL)  # 当日净资产 net_assets
-    net_profit_parent_comp_ttm = sa.Column(pg.REAL)  # 归属母公司净利润(TTM) net_profit_parent_comp_ttm
-    net_profit_parent_comp_lyr = sa.Column(pg.REAL)  # 归属母公司净利润(LYR) net_profit_parent_comp_lyr
-    net_cash_flows_oper_act_ttm = sa.Column(pg.REAL)  # 经营活动产生的现金流量净额(TTM) net_cash_flows_oper_act_ttm
-    net_cash_flows_oper_act_lyr = sa.Column(pg.REAL)  # 经营活动产生的现金流量净额(LYR) net_cash_flows_oper_act_lyr
-    oper_rev_ttm = sa.Column(pg.REAL)  # 营业收入(TTM) oper_rev_ttm
-    oper_rev_lyr = sa.Column(pg.REAL)  # 营业收入(LYR) oper_rev_lyr
+    net_assets = sa.Column(pg.REAL)  # 当日净资产
+    net_profit_parent_comp_ttm = sa.Column(pg.REAL)  # 归属母公司净利润(TTM)
+    net_profit_parent_comp_lyr = sa.Column(pg.REAL)  # 归属母公司净利润(LYR)
+    net_cash_flows_oper_act_ttm = sa.Column(pg.REAL)  # 经营活动产生的现金流量净额(TTM)
+    net_cash_flows_oper_act_lyr = sa.Column(pg.REAL)  # 经营活动产生的现金流量净额(LYR)
+    oper_rev_ttm = sa.Column(pg.REAL)  # 营业收入(TTM)
+    oper_rev_lyr = sa.Column(pg.REAL)  # 营业收入(LYR)
     net_increase_cash_equ_ttm = sa.Column(pg.REAL)  # 现金及现金等价物净增加额(TTM) net_incr_cash_cash_equ_ttm
     net_increase_cash_equ_lyr = sa.Column(pg.REAL)  # 现金及现金等价物净增加额(LYR) net_incr_cash_cash_equ_lyr
 
@@ -153,12 +119,11 @@ class AShareEODDerivativeIndicator(BaseORM):
 class AShareSector(BaseORM):
     """
     A股板块信息
-
-    - 中证行业成分: http://tushare.xcsc.com:7173/document/2?doc_id=10212
+    - 中证行业成分(2016): http://tushare.xcsc.com:7173/document/2?doc_id=10212
     """
     __tablename__ = 'stock_org_sector'
 
-    oid = sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
+    oid = gen_oid()
 
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code

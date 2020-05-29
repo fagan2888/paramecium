@@ -41,7 +41,7 @@ class AbstractFactor(metaclass=abc.ABCMeta):
 
     @property
     def name(self):
-        return f"{self.asset_type.value}_factor_{camel2snake(self.__class__.__name__)}"
+        return camel2snake(self.__class__.__name__)
 
     @property
     def field_types(self):

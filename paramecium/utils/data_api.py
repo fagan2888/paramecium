@@ -4,8 +4,8 @@
 @Author: Sue Zhu
 """
 import logging
-from functools import lru_cache
 from contextlib import contextmanager
+from functools import lru_cache
 
 from paramecium.utils.configuration import get_data_config
 
@@ -27,9 +27,7 @@ def get_tushare_api(api_name='tushare_prod'):
 
 @contextmanager
 def get_ifind_api():
-    """
-    获取同花顺IFind API
-    """
+    """ 获取同花顺IFind API """
     from iFinDPy import THS_iFinDLogin, THS_iFinDLogout
     err_code = THS_iFinDLogin(**get_data_config('ifind'))
     if err_code == '2':

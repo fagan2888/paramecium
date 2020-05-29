@@ -64,6 +64,7 @@ class FactorDBTool(AbstractFactorIO):
         if snapshot.empty:
             self.logger.warning(f'empty data at {dt:%Y-%m-%d} need to be check!')
         else:
+            snapshot.index.name = 'wind_code'
             snapshot.assign(trade_dt=dt).to_sql(**self.saving_param, method='multi', if_exists='append')
 
     def fetch_snapshot(self, dt):
@@ -76,6 +77,13 @@ class FactorDBTool(AbstractFactorIO):
         return snapshot
 
     def _get_dates(self, start, end, freq):
-        real_start = max((t for t in get_dates(freq) if t <= start))
+        real_start = max((t for t in get_dates(freq) if t <= pd.Timestamp(start)))
         real_end = min((last_td_date(), pd.Timestamp(end) if end is not None else pd.Timestamp.max))
         return (t for t in get_dates(freq) if real_start <= t <= real_end)
+
+
+if __name__ == '__main__':
+    from paramecium.factor_pool.stock_classic import FamaFrench
+
+    obj = FactorDBTool(FamaFrench())
+    obj.localized_time_series('2001-12-25', )

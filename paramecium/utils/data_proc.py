@@ -3,6 +3,8 @@
 @Time: 2020/5/28 10:51
 @Author: Sue Zhu
 """
+from functools import partial
+
 import numpy as np
 
 from paramecium.interface import AbstractTransformer
@@ -11,13 +13,14 @@ from paramecium.interface import AbstractTransformer
 class ScaleMinMax(AbstractTransformer):
     __slots__ = ['_min', '_max']
 
-    def __init__(self):
-        self._min = None
-        self._max = None
+    def __init__(self, min_func=None, max_func=None):
+        self._min_func = partial(np.nanmin, axis=0) if min_func is None else min_func
+        self._max_func = partial(np.nanmax, axis=0) if max_func is None else max_func
+        self._min, self._max = None, None
 
     def fit(self, raw_data):
-        self._min = np.nanmin(raw_data, axis=0)
-        self._max = np.nanmax(raw_data, axis=0)
+        self._min = self._min_func(raw_data)
+        self._max = self._max_func(raw_data)
         return self
 
     def transform(self, raw_data):
@@ -41,9 +44,7 @@ class ScaleNormalize(AbstractTransformer):
 
 
 class OutlierMAD(AbstractTransformer):
-    """
-    Clean Outlier with `Median Absolute Deviation(MAD)`
-    """
+    """ Clean Outlier with `Median Absolute Deviation(MAD)` """
 
     __slots__ = ['_is_drop', '_median', '_mad']
 
@@ -62,18 +63,22 @@ class OutlierMAD(AbstractTransformer):
         return self
 
     def transform(self, raw_data):
-        np.hstack((self._trans_single_row(*kws) for kws in zip(self._median, self._mad, raw_data.T)))
+        return np.hstack((self._trans_single_row(*kws).reshape((-1, 1)) for kws in zip(self._median, self._mad, raw_data.T)))
 
     @staticmethod
     def _min_max(arr):
-        return ScaleMinMax().fit_transform(arr)
+        if arr.shape[0]:
+            return ScaleMinMax().fit_transform(arr)
+        else:
+            return arr
 
     def _trans_single_row(self, median, mad, row):
         sigma = mad * 1.4826
         lower_bound, upper_bound = median - 3 * sigma, median + 3 * sigma
 
         if self._is_drop:
-            pass
+            row[row <= lower_bound] = np.nan
+            row[row >= upper_bound] = np.nan
         else:
             rank_row = np.arange(row.shape[0])[np.argsort(row)]
             row[row <= lower_bound] = lower_bound + 0.5 * sigma * (1 - self._min_max(rank_row[row <= lower_bound]))

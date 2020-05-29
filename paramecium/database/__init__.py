@@ -16,8 +16,8 @@ import pandas as pd
 import sqlalchemy as sa
 
 from paramecium.const import *
-from paramecium.database import model_fund_org, model_stock_org, model_const
-from paramecium.database.model_market import TradeCalendar
+from paramecium.database import fund_org, stock_org, enum_code
+from paramecium.database.market import TradeCalendar
 from paramecium.database.utils import create_all_table, get_session, get_sql_engine, BaseORM
 from paramecium.interface import AbstractUniverse
 
@@ -34,7 +34,7 @@ def get_dates(freq=None):
         if freq:
             if isinstance(freq, FreqEnum):
                 freq = freq.name
-            query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}'))
+            query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}') == 1)
         data = _flat_1dim(query.all())
     return pd.to_datetime(list(data))
 
@@ -58,16 +58,16 @@ class StockUniverse(AbstractUniverse):
     def get_instruments(self, dt):
         with get_session() as session:
             query_desc = session.query(
-                model_stock_org.AShareDescription.wind_code,
+                stock_org.AShareDescription.wind_code,
             ).filter(
-                model_stock_org.AShareDescription.list_dt <= dt - pd.Timedelta(days=self.issue),
-                model_stock_org.AShareDescription.delist_dt >= dt,
+                stock_org.AShareDescription.list_dt <= dt - pd.Timedelta(days=self.issue),
+                stock_org.AShareDescription.delist_dt >= dt,
             ).all()
             query_trade = session.query(
-                model_stock_org.AShareEODPrice.wind_code
+                stock_org.AShareEODPrice.wind_code
             ).filter(
-                model_stock_org.AShareEODPrice.trade_dt == dt,
-                model_stock_org.AShareEODPrice.trade_status == 0
+                stock_org.AShareEODPrice.trade_dt == dt,
+                stock_org.AShareEODPrice.trade_status == 0
             ).all()
             # TODO: need data to clean st stock
 
@@ -106,7 +106,7 @@ class FundUniverse(AbstractUniverse):
 
 def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
     if asset == AssetEnum.STOCK:
-        model = model_stock_org.AShareEODPrice
+        model = stock_org.AShareEODPrice
         filters = []
         if start:
             filters.append(model.trade_dt >= start)
@@ -141,7 +141,7 @@ def get_sector(asset: AssetEnum, valid_dt=None, sector_type=None):
             sa.func.substr(table.c.sector_code, 1, len(start_code)) == start_code
         )
     with get_session() as session:
-        data = pd.DataFrame(session.query(table).filter(*filters)).fillna(np.nan)
+        data = pd.DataFrame(session.query(table).filter(*filters).all()).fillna(np.nan)
         for t_col in ('entry_dt', 'remove_dt'):
             data.loc[:, t_col] = pd.to_datetime(data[t_col])
         data.drop(['oid', 'updated_at'], axis=1, errors='ignore')

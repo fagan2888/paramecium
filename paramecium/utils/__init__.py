@@ -32,8 +32,8 @@ def generate_exp_weights(half_life, n_weight):
 # ===================== String ============================================
 def camel2snake(strings):
     # ref: https://stackoverflow.com/a/1176023
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', strings)
-    return re.sub('([a-zO-9])([A-Z])', r'\l_\2', s1).lower()
+    compile_ = re.compile('((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))')
+    return compile_.sub(r'_\1', strings).lower()
 
 
 def capital_str():

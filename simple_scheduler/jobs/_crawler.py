@@ -17,10 +17,10 @@ from sqlalchemy.orm import Query
 
 from paramecium.database import TradeCalendar, get_session
 from paramecium.utils.data_api import get_tushare_api
-from ..scheduler import job
+from simple_scheduler.scheduler import job
 
 
-class _BaseCrawlerJob(job.JobBase):
+class _BaseDBJob(job.JobBase):
     meta_args = None  # tuple of dict with type and description, both string.
     meta_args_example = ''  # string, json like
     _session_cls = None
@@ -103,7 +103,7 @@ class _BaseCrawlerJob(job.JobBase):
     @staticmethod
     @lru_cache()
     def get_dates(freq=None):
-        with _BaseCrawlerJob.get_session() as session:
+        with _BaseDBJob.get_session() as session:
             query = session.query(TradeCalendar.trade_dt)
             if freq:
                 query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}') == 1)
@@ -118,26 +118,29 @@ class _BaseCrawlerJob(job.JobBase):
         return max((t for t in self.get_dates('D') if t <= cur_date))
 
 
-class TushareCrawlerJob(_BaseCrawlerJob):
+class TushareCrawlerJob(_BaseDBJob):
 
     def __init__(self, job_id=None, execution_id=None, env='tushare_prod'):
         self.env = env
         super().__init__(job_id, execution_id)
 
     def get_tushare_data(self, api_name, date_cols=None, org_cols=None, col_mapping=None, **func_kwargs):
-        func = getattr(get_tushare_api(self.env), api_name)
-        result = func(**func_kwargs).fillna(np.nan)
+        result = get_tushare_api(self.env).query(
+            api_name,
+            **func_kwargs,
+            fields=''.join(org_cols) if org_cols else ''
+        ).fillna(np.nan)
         if date_cols:
             for c in date_cols:
                 result.loc[:, c] = pd.to_datetime(result[c])
-        if org_cols:
-            result = result.filter(org_cols, axis=1)
+        # if org_cols:
+        #     result = result.filter(org_cols, axis=1)
         if col_mapping:
             result = result.rename(columns=col_mapping)
         return result
 
 
-class WebCrawlerJob(_BaseCrawlerJob):
+class WebCrawlerJob(_BaseDBJob):
 
     def request(self, method, url):
         return request(

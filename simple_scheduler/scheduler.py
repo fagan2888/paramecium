@@ -3,7 +3,6 @@
 Run the scheduler process.
 pip install git+https://github.com/Nextdoor/ndscheduler.git#egg=ndscheduler
 """
-
 import os
 from itertools import groupby
 

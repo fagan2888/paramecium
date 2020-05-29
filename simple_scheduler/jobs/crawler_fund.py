@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from requests import request
 
-from paramecium.database import model_fund_org, create_all_table
+from paramecium.database import fund_org, create_all_table
 from paramecium.utils.__init__ import chunk
 from simple_scheduler.jobs._crawler import TushareCrawlerJob, WebCrawlerJob
 
@@ -25,7 +25,7 @@ class FundDescription(TushareCrawlerJob):
     meta_args_example = '[1]'
 
     def run(self, pre_truncate=1, *args, **kwargs):
-        model = model_fund_org.MutualFundDescription
+        model = fund_org.MutualFundDescription
 
         if pre_truncate:
             with self.get_session() as session:
@@ -87,7 +87,7 @@ class FundSales(WebCrawlerJob):
             respons_df.loc[:, c] = pd.to_numeric(respons_df[c], errors='coerce')
         for c in ('subscribe_start_time', 'subscribe_end_time'):
             respons_df.loc[:, c] = pd.to_datetime(respons_df[c].replace('0', np.nan), format='%Y%m%d')
-        model = model_fund_org.MutualFundSale
+        model = fund_org.MutualFundSale
         self.upsert_data(respons_df.astype({
             'product_id': int, 'risk_level': int,
             'per_buy_limit': float, 'product_status': int,
@@ -156,16 +156,16 @@ class FundNav(TushareCrawlerJob):
     def upsert_nav(self, nav, pct):
         nav['oid'] = self.upsert_data(
             records=nav.drop(self._aum_cols, axis=1, errors='ignore'),
-            model=model_fund_org.MutualFundNav,
-            ukeys=[model_fund_org.MutualFundNav.wind_code, model_fund_org.MutualFundNav.trade_dt],
+            model=fund_org.MutualFundNav,
+            ukeys=[fund_org.MutualFundNav.wind_code, fund_org.MutualFundNav.trade_dt],
             msg=f'fund navs({pct * 100:.2f}%)',
         )
         aum = nav.loc[:, ['oid', *self._aum_cols]].dropna(subset=self._aum_cols, how='all')
         if aum.shape[0]:
             self.upsert_data(
                 records=aum,
-                model=model_fund_org.MutualFundAUM,
-                ukeys=[model_fund_org.MutualFundAUM.oid],
+                model=fund_org.MutualFundAUM,
+                ukeys=[fund_org.MutualFundAUM.oid],
                 msg='fund aums'
             )
         return pd.DataFrame()
@@ -184,10 +184,10 @@ class FundManager(TushareCrawlerJob):
     }
 
     def run(self, *args, **kwargs):
-        model = model_fund_org.MutualFundManager
+        model = fund_org.MutualFundManager
 
         with self.get_session() as session:
-            fund_list = pd.DataFrame(session.query(model_fund_org.MutualFundDescription.wind_code)).squeeze()
+            fund_list = pd.DataFrame(session.query(fund_org.MutualFundDescription.wind_code)).squeeze()
 
         for funds in chunk(fund_list, 100):
             managers = self.get_tushare_data(

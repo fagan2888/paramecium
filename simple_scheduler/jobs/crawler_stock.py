@@ -6,7 +6,7 @@
 from itertools import product
 
 from paramecium.const import TradeStatus
-from paramecium.database import model_stock_org, model_const
+from paramecium.database import stock_org, enum_code
 from simple_scheduler.jobs._crawler import *
 
 
@@ -38,7 +38,7 @@ class AShareDescription(TushareCrawlerJob):
         stock_info.loc[lambda df: df['list_dt'].notnull() & df['delist_dt'].isnull(), 'delist_dt'] = pd.Timestamp.max
         stock_info.loc[stock_info['list_dt'].isnull(), 'delist_dt'] = pd.NaT
 
-        model = model_stock_org.AShareDescription
+        model = stock_org.AShareDescription
         self.upsert_data(records=stock_info, model=model, ukeys=model.get_primary_key())
 
 
@@ -46,7 +46,7 @@ class _CrawlerEOD(TushareCrawlerJob):
 
     @property
     def model(self):
-        return model_stock_org.AShareEODPrice
+        return stock_org.AShareEODPrice
 
     def get_tushare_data_(self, **func_kwargs):
         return NotImplementedError
@@ -90,7 +90,7 @@ class ASharePrice(_CrawlerEOD):
 
     @property
     def model(self):
-        return model_stock_org.AShareEODPrice
+        return stock_org.AShareEODPrice
 
     def get_tushare_data_(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
@@ -124,7 +124,7 @@ class AShareSuspend(TushareCrawlerJob):
 
     @property
     def model(self):
-        return model_stock_org.AShareSuspend
+        return stock_org.AShareSuspend
 
     def get_tushare_data(self, **func_kwargs):
         data = super().get_tushare_data(
@@ -151,8 +151,8 @@ class AShareSuspend(TushareCrawlerJob):
                 # data do not exist, download by stock code
                 stock_list = pd.DataFrame(
                     session.query(
-                        model_stock_org.AShareDescription.wind_code,
-                        model_stock_org.AShareDescription.list_dt,
+                        stock_org.AShareDescription.wind_code,
+                        stock_org.AShareDescription.list_dt,
                     ).all()
                 ).dropna()
                 query_params = (dict(ts_code=code) for code in stock_list['wind_code'])
@@ -177,7 +177,7 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
 
     @property
     def model(self):
-        return model_stock_org.AShareEODDerivativeIndicator
+        return stock_org.AShareEODDerivativeIndicator
 
     def get_tushare_data_(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
@@ -209,14 +209,14 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
 class AShareIndustry(TushareCrawlerJob):
 
     def run(self, *args, **kwargs):
-        model = model_stock_org.AShareSector
+        model = stock_org.AShareSector
 
         with get_session() as session:
             industry_codes = [c for r in session.query(
-                model_const.EnumIndustryCode.industry_code
+                enum_code.EnumIndustryCode.industry_code
             ).filter(
-                model_const.EnumIndustryCode.level_num == 3,
-                sa.func.substr(model_const.EnumIndustryCode.industry_code, 1, 2) == '72'
+                enum_code.EnumIndustryCode.level_num == 3,
+                sa.func.substr(enum_code.EnumIndustryCode.industry_code, 1, 2) == '72'
             ).all() for c in r]
 
         for code in industry_codes:
@@ -283,7 +283,7 @@ if __name__ == '__main__':
 
     create_all_table()
     AShareDescription().run()
-    AShareEODDerivativeIndicator().run()
+    # AShareEODDerivativeIndicator().run()
     ASharePrice().run()
     AShareSuspend().run()
     AShareIndustry().run()
