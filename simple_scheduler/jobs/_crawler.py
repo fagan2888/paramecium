@@ -11,13 +11,13 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 import sqlalchemy as sa
-from ndscheduler.corescheduler import job
 from requests import request
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Query
 
 from paramecium.database import TradeCalendar, get_session
 from paramecium.utils.data_api import get_tushare_api
+from ..scheduler import job
 
 
 class _BaseCrawlerJob(job.JobBase):
@@ -48,7 +48,8 @@ class _BaseCrawlerJob(job.JobBase):
 
     @classmethod
     def get_logger(cls):
-        return logging.getLogger(cls.get_model_name())
+        logger = logging.getLogger(cls.get_model_name())
+        return logger
 
     @classmethod
     def get_session(cls):

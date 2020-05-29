@@ -6,7 +6,7 @@
 from itertools import product
 
 from paramecium.const import TradeStatus
-from paramecium.database import model_stock_org
+from paramecium.database import model_stock_org, model_const
 from simple_scheduler.jobs._crawler import *
 
 
@@ -206,6 +206,29 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
         return price
 
 
+class AShareIndustry(TushareCrawlerJob):
+
+    def run(self, *args, **kwargs):
+        model = model_stock_org.AShareSector
+
+        with get_session() as session:
+            industry_codes = [c for r in session.query(
+                model_const.EnumIndustryCode.industry_code
+            ).filter(
+                model_const.EnumIndustryCode.level_num == 3,
+                sa.func.substr(model_const.EnumIndustryCode.industry_code, 1, 2) == '72'
+            ).all() for c in r]
+
+        for code in industry_codes:
+            data = self.get_tushare_data(
+                api_name='index_member_zz',
+                date_cols=['entry_dt', 'remove_dt'],
+                col_mapping={'ts_code': 'wind_code', 'index_code': 'sector_code'},
+                index_code=code
+            ).drop('is_new', axis=1, errors='ignore').fillna({'remove_dt': pd.Timestamp.max})
+            self.upsert_data(data, model=model, ukeys=model.u_key.columns, msg=code)
+
+
 # class AShareAnnouncement(WebCrawlerJob):
 #     """
 #     Crawler stock announcement from `eastmoney.com`
@@ -263,3 +286,4 @@ if __name__ == '__main__':
     AShareEODDerivativeIndicator().run()
     ASharePrice().run()
     AShareSuspend().run()
+    AShareIndustry().run()

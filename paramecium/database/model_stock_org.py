@@ -164,3 +164,5 @@ class AShareSector(BaseORM):
     sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code
     entry_dt = sa.Column(sa.Date)  # 纳入日期 entry_dt
     remove_dt = sa.Column(sa.Date)  # 剔除日期 remove_dt
+
+    u_key = sa.UniqueConstraint(wind_code, sector_code, entry_dt, name=f"uk_{__tablename__}")

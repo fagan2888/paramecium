@@ -6,13 +6,16 @@
 import numpy as np
 import pandas as pd
 
-from paramecium.interface import AbstractFactor
 from paramecium.database import StockUniverse
+from paramecium.interface import AbstractFactor
 from paramecium.utils.data_api import get_tushare_api
+from paramecium.utils.data_proc import ScaleNormalize, OutlierMAD
 
 
 class StockFamaFrench(AbstractFactor):
-    """ Classic Fama-French 3 Factor """
+    """
+    Classic Fama-French 3 Factor
+    """
 
     def __init__(self):
         self.universe = StockUniverse(issue_month=12, no_st=True, no_suspend=True)
@@ -23,7 +26,10 @@ class StockFamaFrench(AbstractFactor):
         ).assign(wind_code='', trade_dt=pd.Timestamp.now(), label='')
 
     def compute(self, dt):
+        # stock match case
         universe = self.universe.get_instruments(dt)
+
+        # get derivative data
         derivative = get_tushare_api().daily_basic(
             trade_date=f'{dt:%Y%m%d}',
             fields="ts_code,tot_mv,mv,pb_new"
@@ -31,6 +37,11 @@ class StockFamaFrench(AbstractFactor):
             'ts_code': 'wind_code',
             'tot_mv': 'capt', 'mv': 'size',  # 万元
             'pb_new': 'value',
-        }).set_index('wind_code').filter(universe)
+        }).set_index('wind_code').filter(universe, axis=0)
+
         derivative.loc[:, 'size'] = np.log(derivative.loc[:, 'size'])
-        derivative.loc[:, 'value'] = 1/derivative.loc[:, 'value']
+        derivative.loc[:, 'value'] = 1 / derivative.loc[:, 'value']
+        for transformer in (OutlierMAD(), ScaleNormalize()):
+            derivative.loc[:, :] = transformer.fit_transform(derivative.values)
+
+        # TODO:

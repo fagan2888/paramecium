@@ -5,18 +5,20 @@
 """
 __all__ = [
     'create_all_table', 'get_session', 'get_sql_engine',
-    'get_dates','last_td_date',
+    'get_dates', 'last_td_date',
     'StockUniverse', 'FundUniverse',
 ]
 
 from functools import lru_cache
 
+import numpy as np
 import pandas as pd
+import sqlalchemy as sa
 
 from paramecium.const import *
-from paramecium.database import model_fund_org, model_stock_org, model_const, get_session
+from paramecium.database import model_fund_org, model_stock_org, model_const
 from paramecium.database.model_market import TradeCalendar
-from paramecium.database.utils import create_all_table, get_session, get_sql_engine
+from paramecium.database.utils import create_all_table, get_session, get_sql_engine, BaseORM
 from paramecium.interface import AbstractUniverse
 
 
@@ -102,10 +104,46 @@ class FundUniverse(AbstractUniverse):
         pass
 
 
-def get_price(asset:AssetEnum, start=None, end=None, codes=None, fields=None):
+def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
     if asset == AssetEnum.STOCK:
+        model = model_stock_org.AShareEODPrice
+        filters = []
+        if start:
+            filters.append(model.trade_dt >= start)
+        if end:
+            filters.append(model.trade_dt >= end)
+        if code:
+            filters.append(model.wind_code == code)
         with get_session() as session:
-            price_df = pd.DataFrame(
+            data = pd.DataFrame(session.query(model).filter(*filters)).fillna(np.nan)
 
-            )
+        data.loc[:, 'trade_dt'] = pd.to_datetime(data['trade_dt'])
+        if fields:
+            data = data.filter(fields, axis=1)
+        else:
+            data = data.drop(['oid', 'updated_at'], axis=1, errors='ignore')
 
+        return data
+
+    else:
+        raise KeyError(f'Undefined Asset {asset.value}')
+
+
+def get_sector(asset: AssetEnum, valid_dt=None, sector_type=None):
+    table = BaseORM.metadata.tables[f'{asset.value}_org_sector']
+
+    filters = []
+    if valid_dt:
+        filters.extend((valid_dt >= table.c.entry_dt, valid_dt <= table.c.remove_dt))
+    if sector_type:
+        start_code = sector_type.value
+        filters.append(
+            sa.func.substr(table.c.sector_code, 1, len(start_code)) == start_code
+        )
+    with get_session() as session:
+        data = pd.DataFrame(session.query(table).filter(*filters)).fillna(np.nan)
+        for t_col in ('entry_dt', 'remove_dt'):
+            data.loc[:, t_col] = pd.to_datetime(data[t_col])
+        data.drop(['oid', 'updated_at'], axis=1, errors='ignore')
+
+    return data

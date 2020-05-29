@@ -5,11 +5,18 @@ pip install git+https://github.com/Nextdoor/ndscheduler.git#egg=ndscheduler
 """
 
 import os
+from itertools import groupby
 
 os.environ['NDSCHEDULER_SETTINGS_MODULE'] = 'simple_scheduler.settings'
 from ndscheduler.server import server
+from ndscheduler.corescheduler import job
 
 from paramecium.database import create_all_table
+
+# sometimes the logger would be duplicates, so check and keep only one.
+import logging
+logger = logging.getLogger()
+logger.handlers = [list(g)[0] for _, g in groupby(logger.handlers, lambda x: x.__class__)]
 
 
 class SimpleServer(server.SchedulerServer):

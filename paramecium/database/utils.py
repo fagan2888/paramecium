@@ -6,10 +6,13 @@
 from contextlib import contextmanager
 
 import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
+from sqlalchemy.engine.url import URL as sa_url
+from sqlalchemy.ext.declarative import declarative_base
 
 from paramecium.utils.configuration import get_data_config
 
-BaseORM = sa.ext.declarative.declarative_base(
+BaseORM = declarative_base(
     cls=type('_DabaseMeta', (object,), {
         'updated_at': sa.Column(
             sa.TIMESTAMP,
@@ -24,10 +27,10 @@ BaseORM = sa.ext.declarative.declarative_base(
 def get_sql_engine(env='postgres', **kwargs):
     params = dict(pool_size=30, encoding='utf-8')
     params.update(**kwargs)
-    return sa.create_engine(sa.engine.URL(**get_data_config(env)), **params)
+    return sa.create_engine(sa_url(**get_data_config(env)), **params)
 
 
-_Sa_Session = sa.orm.scoped_session(sa.orm.sessionmaker(bind=get_sql_engine(env='postgres')))
+_Sa_Session = sa_orm.scoped_session(sa_orm.sessionmaker(bind=get_sql_engine(env='postgres')))
 
 
 def create_all_table():

@@ -61,9 +61,24 @@ class OutlierMAD(AbstractTransformer):
         self._mad = np.nanmedian(np.abs(raw_data - self._median), axis=0)
         return self
 
-    # def transform(self, raw_data):
-    #     for col in
+    def transform(self, raw_data):
+        np.hstack((self._trans_single_row(*kws) for kws in zip(self._median, self._mad, raw_data.T)))
 
+    @staticmethod
+    def _min_max(arr):
+        return ScaleMinMax().fit_transform(arr)
+
+    def _trans_single_row(self, median, mad, row):
+        sigma = mad * 1.4826
+        lower_bound, upper_bound = median - 3 * sigma, median + 3 * sigma
+
+        if self._is_drop:
+            pass
+        else:
+            rank_row = np.arange(row.shape[0])[np.argsort(row)]
+            row[row <= lower_bound] = lower_bound + 0.5 * sigma * (1 - self._min_max(rank_row[row <= lower_bound]))
+            row[row >= upper_bound] = upper_bound + 0.5 * sigma * self._min_max(rank_row[row >= upper_bound])
+        return row
 
 # def outlier_mad(raw_factor):
 #     """

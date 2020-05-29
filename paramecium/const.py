@@ -37,3 +37,11 @@ class TradeStatus(CustomEnum):
     XD = 2  # 除息
     DR = 3  # 除权除息
     N = 4  # 上市首日
+
+
+class SectorEnum(CustomEnum):
+    """ Sector 类型: 开始字母 """
+
+    STOCK_SEC_ZZ = '72'
+
+    MF_TYPE = '200101'
