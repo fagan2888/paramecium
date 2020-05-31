@@ -13,7 +13,7 @@ HTTP_ADDRESS = '127.0.0.1'
 # Set logging level
 logging.getLogger().setLevel(logging.DEBUG)
 
-JOB_CLASS_PACKAGES = ['simple_scheduler.jobs']
+JOB_CLASS_PACKAGES = ['scheduler_.jobs']
 
 # Postgres
 DATABASE_CLASS = 'ndscheduler.corescheduler.datastore.providers.postgres.DatastorePostgres'

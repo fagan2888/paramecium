@@ -7,9 +7,9 @@ import logging
 
 import pandas as pd
 
-from paramecium.database.market import TradeCalendar as CalModel
+from paramecium.database.trade_calendar import TradeCalendar as CalModel
 from paramecium.utils.date_tool import expand_calendar
-from simple_scheduler.jobs._crawler import TushareCrawlerJob
+from paramecium.scheduler_.jobs._crawler import TushareCrawlerJob
 
 logger = logging.getLogger(__name__)
 

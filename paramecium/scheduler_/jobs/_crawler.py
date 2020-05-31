@@ -15,15 +15,14 @@ from requests import request
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Query
 
-from paramecium.database import TradeCalendar, get_session
+from paramecium.database import get_session, get_dates
 from paramecium.utils.data_api import get_tushare_api
-from simple_scheduler.scheduler import job
+from paramecium.scheduler_.scheduler import job
 
 
 class _BaseDBJob(job.JobBase):
     meta_args = None  # tuple of dict with type and description, both string.
     meta_args_example = ''  # string, json like
-    _session_cls = None
 
     def __init__(self, job_id=None, execution_id=None):
         if job_id is None:
@@ -84,30 +83,26 @@ class _BaseDBJob(job.JobBase):
         return result_ids
 
     def clean_duplicates(self, model, unique_cols):
+        self.get_logger().debug(f'Clean duplicate data after bulk insert.')
         with self.get_session() as session:
             labeled_cols = [c.label(c.key) for c in unique_cols]
-            pk = model.get_primary_key()[0]
-            grouped = Query(labeled_cols).group_by(unique_cols).having(sa.func.count(pk) > 1).subquery('g')
+            pk, *_ = model.get_primary_key()
+            grouped = Query(labeled_cols).group_by(*unique_cols).having(sa.func.count(pk) > 1).subquery('g')
             duplicates = pd.DataFrame(
-                session.query(
-                    pk, *labeled_cols
-                ).join(
-                    grouped, sa.and_(*(getattr(grouped.c, c.key) == c for c in unique_cols))
-                ).order_by(model.updated_at)
-            )
+                session.query(pk, *labeled_cols).join(
+                    grouped, sa.and_(*(grouped.c[c.key] == c for c in unique_cols))
+                ).order_by(model.updated_at).all()
+            ).set_index(pk.name)
             if not duplicates.empty:
-                duplicates = duplicates.loc[
-                    lambda df: df.duplicated(subset=[c.key for c in unique_cols], keep='last'), pk.key]
-                session.query(model).filter(pk.in_(duplicates.tolist())).delete(synchronize_session='fetch')
+                session.query(model).filter(pk.in_(
+                    duplicates.loc[lambda df: df.duplicated(keep='last')].index.tolist()
+                )).delete(synchronize_session='fetch')
 
     @staticmethod
     @lru_cache()
     def get_dates(freq=None):
         with _BaseDBJob.get_session() as session:
-            query = session.query(TradeCalendar.trade_dt)
-            if freq:
-                query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}') == 1)
-            dates = pd.to_datetime([i for row in query.all() for i in row])
+            dates = get_dates(freq)
         return dates
 
     @property
@@ -124,12 +119,9 @@ class TushareCrawlerJob(_BaseDBJob):
         self.env = env
         super().__init__(job_id, execution_id)
 
-    def get_tushare_data(self, api_name, date_cols=None, org_cols=None, col_mapping=None, **func_kwargs):
-        result = get_tushare_api(self.env).query(
-            api_name,
-            **func_kwargs,
-            fields=''.join(org_cols) if org_cols else ''
-        ).fillna(np.nan)
+    def get_tushare_data(self, api_name, date_cols=None, fields=None, col_mapping=None, **func_kwargs):
+        api = get_tushare_api(self.env)
+        result = api.query(api_name, **func_kwargs, fields=','.join(fields) if fields else '').fillna(np.nan)
         if date_cols:
             for c in date_cols:
                 result.loc[:, c] = pd.to_datetime(result[c])

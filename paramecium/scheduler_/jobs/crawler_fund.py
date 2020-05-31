@@ -10,8 +10,8 @@ import pandas as pd
 from requests import request
 
 from paramecium.database import fund_org, create_all_table
-from paramecium.utils.__init__ import chunk
-from simple_scheduler.jobs._crawler import TushareCrawlerJob, WebCrawlerJob
+from paramecium.utils import chunk
+from paramecium.scheduler_.jobs._crawler import TushareCrawlerJob, WebCrawlerJob
 
 
 class FundDescription(TushareCrawlerJob):
@@ -24,7 +24,7 @@ class FundDescription(TushareCrawlerJob):
     )
     meta_args_example = '[1]'
 
-    def run(self, pre_truncate=1, *args, **kwargs):
+    def run(self, pre_truncate=0, *args, **kwargs):
         model = fund_org.MutualFundDescription
 
         if pre_truncate:
@@ -101,27 +101,27 @@ class FundNav(TushareCrawlerJob):
     Since tushare api can only request 10,000 times per hour,
     use `try-except` to get most.
     """
-    _aum_cols = ['net_asset', 'total_netasset']
 
     def run(self, *args, **kwargs):
         self.get_logger().info('query exist nav data to get query range')
-        max_dts = pd.read_sql(
-            """
-            select t.wind_code, t.max_dt
-            from (
-                select 
-                    d.*,
-                    case when p.max_dt is null then d.setup_date else p.max_dt end as max_dt
-                from mf_org_description d 
-                left join (select wind_code, max(trade_dt) as max_dt from mf_org_nav group by wind_code) p 
-                on d.wind_code=p.wind_code
-            ) t             
-            where 
-                t.max_dt < t.maturity_date
-                and t.setup_date > date('1900-01-01')
-            """,
-            self._session_cls.bind, parse_dates=['max_dt'], index_col=['wind_code']
-        ).squeeze().loc[lambda ser: ser.index.str.len() < 10]
+        with self.get_session() as session:
+            max_dts = pd.read_sql(
+                """
+                select t.wind_code, t.max_dt
+                from (
+                    select 
+                        d.*,
+                        case when p.max_dt is null then d.setup_date else p.max_dt end as max_dt
+                    from mf_org_description d 
+                    left join (select wind_code, max(trade_dt) as max_dt from mf_org_nav group by wind_code) p 
+                    on d.wind_code=p.wind_code
+                ) t             
+                where 
+                    t.max_dt < t.maturity_date
+                    and t.setup_date > date('1900-01-01')
+                """,
+                session.bind, parse_dates=['max_dt'], index_col=['wind_code']
+            ).squeeze().loc[lambda ser: ser.index.str.len() < 10]
         max_dts -= pd.Timedelta(days=7)
 
         nav = pd.DataFrame()
@@ -131,16 +131,13 @@ class FundNav(TushareCrawlerJob):
                 nav = pd.concat((
                     nav,
                     self.get_tushare_data(
-                        api_name='fund_nav',
+                        api_name='fund_nav', ts_code=code,
                         date_cols=['end_date', 'ann_date'],
-                        org_cols=['ts_code', 'ann_date', 'end_date', 'unit_nav', 'accum_nav',
-                                  'net_asset', 'total_netasset', 'adj_nav'],
                         col_mapping={
                             'ts_code': 'wind_code',
                             'end_date': 'trade_dt',
                             'accum_nav': 'acc_nav',
                         },
-                        ts_code=code
                     ).loc[lambda df: df['trade_dt'] >= dt]
                 ), axis=0)
             except Exception as e:
@@ -148,26 +145,21 @@ class FundNav(TushareCrawlerJob):
                 break
 
             if nav.shape[0] > 10000:
-                nav = self.upsert_nav(nav, i / max_dts.shape[0])
+                nav = self.insert_nav(nav, i / max_dts.shape[0])
 
-        if nav.shape[0]:
-            nav = self.upsert_nav(nav, 1)
-
-    def upsert_nav(self, nav, pct):
-        nav['oid'] = self.upsert_data(
-            records=nav.drop(self._aum_cols, axis=1, errors='ignore'),
-            model=fund_org.MutualFundNav,
-            ukeys=[fund_org.MutualFundNav.wind_code, fund_org.MutualFundNav.trade_dt],
-            msg=f'fund navs({pct * 100:.2f}%)',
+        self.insert_nav(nav, 1)
+        self.clean_duplicates(
+            fund_org.MutualFundNav,
+            [fund_org.MutualFundNav.wind_code, fund_org.MutualFundNav.trade_dt]
         )
-        aum = nav.loc[:, ['oid', *self._aum_cols]].dropna(subset=self._aum_cols, how='all')
-        if aum.shape[0]:
-            self.upsert_data(
-                records=aum,
-                model=fund_org.MutualFundAUM,
-                ukeys=[fund_org.MutualFundAUM.oid],
-                msg='fund aums'
-            )
+
+    def insert_nav(self, nav, pct):
+        nav['adj_factor'] = nav['adj_nav'].div(nav['unit_nav']).round(6)
+        self.bulk_insert(
+            records=nav.drop(['accum_div', 'adj_nav'], axis=1, errors='ignore'),
+            model=fund_org.MutualFundNav,
+            msg=f'fund navs({pct * 100:.2f}%)'
+        )
         return pd.DataFrame()
 
 
@@ -193,7 +185,7 @@ class FundManager(TushareCrawlerJob):
             managers = self.get_tushare_data(
                 api_name='fund_manager',
                 date_cols=['ann_date', 'begin_date', 'end_date'],
-                org_cols=self._COL.keys(),
+                fields=self._COL.keys(),
                 col_mapping=self._COL,
                 ts_code=','.join(funds)
             ).fillna({
@@ -205,7 +197,7 @@ class FundManager(TushareCrawlerJob):
 
 if __name__ == '__main__':
     create_all_table()
-    # FundDescription().run(True)
+    FundDescription().run()
     FundSales().run()
     FundNav(env='tushare_prod').run()
     FundManager().run()

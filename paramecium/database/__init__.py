@@ -4,9 +4,10 @@
 @Author: Sue Zhu
 """
 __all__ = [
-    'create_all_table', 'get_session', 'get_sql_engine',
     'get_dates', 'last_td_date',
+    'create_all_table', 'get_session', 'get_sql_engine',
     'StockUniverse', 'FundUniverse',
+    'get_price', 'get_sector',
 ]
 
 from functools import lru_cache
@@ -17,35 +18,12 @@ import sqlalchemy as sa
 
 from paramecium.const import *
 from paramecium.database import fund_org, stock_org, enum_code
-from paramecium.database.market import TradeCalendar
-from paramecium.database.utils import create_all_table, get_session, get_sql_engine, BaseORM
+from paramecium.database.trade_calendar import get_dates, last_td_date
+from paramecium.database.utils import create_all_table, get_session, get_sql_engine, BaseORM, flat_1dim
 from paramecium.interface import AbstractUniverse
 
 
-def _flat_1dim(folder_data):
-    return (entry for record in folder_data for entry in record)
-
-
-# calendar
-@lru_cache()
-def get_dates(freq=None):
-    with get_session() as session:
-        query = session.query(TradeCalendar.trade_dt)
-        if freq:
-            if isinstance(freq, FreqEnum):
-                freq = freq.name
-            query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}') == 1)
-        data = _flat_1dim(query.all())
-    return pd.to_datetime(list(data))
-
-
-def last_td_date():
-    cur_date = pd.Timestamp.now()
-    if cur_date.hour <= 22:
-        cur_date -= pd.Timedelta(days=1)
-    return max((t for t in get_dates(freq=FreqEnum.D) if t <= cur_date))
-
-
+# ------------- Universe -----------------------------------------------------------
 @lru_cache()
 class StockUniverse(AbstractUniverse):
 
@@ -71,7 +49,7 @@ class StockUniverse(AbstractUniverse):
             ).all()
             # TODO: need data to clean st stock
 
-        return {*_flat_1dim(query_desc)} - {*_flat_1dim(query_trade)}
+        return {*flat_1dim(query_desc)} - {*flat_1dim(query_trade)}
 
 
 @lru_cache()
@@ -104,29 +82,34 @@ class FundUniverse(AbstractUniverse):
         pass
 
 
+# ------------- Price -----------------------------------------------------------
 def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
     if asset == AssetEnum.STOCK:
         model = stock_org.AShareEODPrice
-        filters = []
-        if start:
-            filters.append(model.trade_dt >= start)
-        if end:
-            filters.append(model.trade_dt >= end)
-        if code:
-            filters.append(model.wind_code == code)
-        with get_session() as session:
-            data = pd.DataFrame(session.query(model).filter(*filters)).fillna(np.nan)
-
-        data.loc[:, 'trade_dt'] = pd.to_datetime(data['trade_dt'])
-        if fields:
-            data = data.filter(fields, axis=1)
-        else:
-            data = data.drop(['oid', 'updated_at'], axis=1, errors='ignore')
-
-        return data
-
+    elif asset == AssetEnum.CMF:
+        model = fund_org.MutualFundNav
     else:
         raise KeyError(f'Undefined Asset {asset.value}')
+
+    filters = []
+    if start:
+        filters.append(model.trade_dt >= start)
+    if end:
+        filters.append(model.trade_dt >= end)
+    if code:
+        filters.append(model.wind_code == code)
+
+    with get_session() as session:
+        data = pd.DataFrame(session.query(model).filter(*filters)).fillna(np.nan)
+
+    data.loc[:, 'trade_dt'] = pd.to_datetime(data['trade_dt'])
+
+    if fields:
+        data = data.filter(fields, axis=1)
+    else:
+        data = data.drop(['oid', 'updated_at'], axis=1, errors='ignore')
+
+    return data
 
 
 def get_sector(asset: AssetEnum, valid_dt=None, sector_type=None):

@@ -63,7 +63,7 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
 
     @property
     def logger(self):
-        return logging.getLogger(f'{self.__class__}({self._factor.__class__})')
+        return logging.getLogger(f'{self.__class__!r}({self._factor.__class__!r})')
 
     @property
     def table_name(self):
@@ -86,7 +86,7 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
         :param dt: pd.Timestamp
         :return:
         """
-        return NotImplementedError
+        return ()
 
     @abc.abstractmethod
     def _get_dates(self, start, end, freq):
@@ -97,7 +97,7 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
         :param freq: FreqEnum
         :return:
         """
-        return NotImplementedError
+        return ()
 
     def localized_time_series(self, start, end=None, freq=FreqEnum.M, if_exist=1):
         for t in self._get_dates(start, end, freq):

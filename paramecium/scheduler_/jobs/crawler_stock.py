@@ -5,9 +5,8 @@
 """
 from itertools import product
 
-from paramecium.const import TradeStatus
+from paramecium.const import TradeStatus, SectorEnum
 from paramecium.database import stock_org, enum_code
-from simple_scheduler.jobs._crawler import *
 
 
 class AShareDescription(TushareCrawlerJob):
@@ -27,10 +26,9 @@ class AShareDescription(TushareCrawlerJob):
     def run(self, *args, **kwargs):
         stock_info = pd.concat((
             self.get_tushare_data(
-                api_name='stock_basic',
-                exchange=exchange,
-                fields=','.join((*self._COL.keys(), 'comp_name', 'comp_name_en', 'isin_code', 'exchange', 'list_board',
-                                 'pinyin', 'is_shsc', 'comp_code'))
+                api_name='stock_basic', exchange=exchange,
+                fields=[*self._COL.keys(), 'comp_name', 'comp_name_en', 'isin_code', 'exchange', 'list_board',
+                        'pinyin', 'is_shsc', 'comp_code']
             ) for exchange in ('SSE', 'SZSE')
         )).rename(columns=self._COL).fillna(np.nan)
         stock_info.loc[:, 'list_dt'] = pd.to_datetime(stock_info['list_dt'])
@@ -72,13 +70,10 @@ class _CrawlerEOD(TushareCrawlerJob):
                 break
 
             if price.shape[0] > 10000:
-                self.bulk_insert(
-                    records=price, model=self.model,
-                    msg=f'stock price {i / len(trade_dates) * 100:.2f}%',
-                )
+                self.bulk_insert(records=price, model=self.model, msg=f'{i / len(trade_dates) * 100:.2f}%')
                 price = pd.DataFrame()
 
-        self.bulk_insert(records=price, model=self.model)
+        self.bulk_insert(records=price, model=self.model, msg='100%')
         self.clean_duplicates(self.model, [self.model.wind_code, self.model.trade_dt])
 
 
@@ -107,7 +102,7 @@ class ASharePrice(_CrawlerEOD):
         price = super().get_tushare_data(
             api_name='daily',
             date_cols=['trade_date'], col_mapping=mapping,
-            org_cols=[*mapping.keys(), 'adj_factor', 'avg_price', 'trade_status'],
+            fields=[*mapping.keys(), 'adj_factor', 'avg_price', 'trade_status'],
             **func_kwargs
         )
         price.loc[:, 'trade_status'] = price['trade_status'].map({
@@ -197,10 +192,10 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
         price = super().get_tushare_data(
             api_name='daily_basic',
             date_cols=['trade_date'], col_mapping=mapping,
-            org_cols=[*mapping.keys(), 'pe', 'pb_new', 'pe_ttm', 'pcf_ocf', 'pcf_ocf_ttm', 'pcf_ncf', 'pcf_ncf_ttm',
-                      'ps', 'ps_ttm', 'price_div_dps', 'close', 'price_high_52w', 'price_low_52w', 'adj_high_52w',
-                      'adj_low_52w', 'net_assets', 'net_profit_parent_comp_ttm', 'net_profit_parent_comp_lyr',
-                      'net_cash_flows_oper_act_ttm', 'net_cash_flows_oper_act_lyr', 'oper_rev_ttm', 'oper_rev_lyr'],
+            fields=[*mapping.keys(), 'pe', 'pb_new', 'pe_ttm', 'pcf_ocf', 'pcf_ocf_ttm', 'pcf_ncf', 'pcf_ncf_ttm',
+                    'ps', 'ps_ttm', 'price_div_dps', 'close', 'adj_high_52w',
+                    'adj_low_52w', 'net_assets', 'net_profit_parent_comp_ttm', 'net_profit_parent_comp_lyr',
+                    'net_cash_flows_oper_act_ttm', 'net_cash_flows_oper_act_lyr', 'oper_rev_ttm', 'oper_rev_lyr'],
             **func_kwargs
         )
         return price
@@ -208,25 +203,56 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
 
 class AShareIndustry(TushareCrawlerJob):
 
+    @property
+    def enum_tb(self):
+        return enum_code.EnumIndustryCode
+
     def run(self, *args, **kwargs):
-        model = stock_org.AShareSector
+        for code, data in (self.get_zz_industry()):
+            self.upsert_data(
+                data,
+                model=stock_org.AShareSector,
+                ukeys=stock_org.AShareSector.u_key.columns,
+                msg=code
+            )
 
+    def get_zz_industry(self):
         with get_session() as session:
-            industry_codes = [c for r in session.query(
-                enum_code.EnumIndustryCode.industry_code
+            industry_codes = session.query(
+                self.enum_tb.code
             ).filter(
-                enum_code.EnumIndustryCode.level_num == 3,
-                sa.func.substr(enum_code.EnumIndustryCode.industry_code, 1, 2) == '72'
-            ).all() for c in r]
+                self.enum_tb.level_num == 3,
+                sa.func.substr(self.enum_tb.code, 1, 2) == SectorEnum.SEC_ZZ.value
+            ).all()
 
-        for code in industry_codes:
+        for (code,) in industry_codes:
             data = self.get_tushare_data(
                 api_name='index_member_zz',
                 date_cols=['entry_dt', 'remove_dt'],
                 col_mapping={'ts_code': 'wind_code', 'index_code': 'sector_code'},
                 index_code=code
             ).drop('is_new', axis=1, errors='ignore').fillna({'remove_dt': pd.Timestamp.max})
-            self.upsert_data(data, model=model, ukeys=model.u_key.columns, msg=code)
+            yield code, data
+
+    def get_sw_industry(self):
+        # TODO: not exist in prod, still have problem in dev server.
+        with get_session() as session:
+            industry_codes = session.query(
+                self.enum_tb.code,
+                self.enum_tb.memo,
+            ).filter(
+                self.enum_tb.level_num == 4,
+                sa.func.substr(self.enum_tb.code, 1, 2) == SectorEnum.SEC_SW.value
+            ).all()
+
+        for code, idx in industry_codes:
+            dt_cols = ['in_date', 'out_date']
+            data = self.get_tushare_data(
+                api_name='sw_index_member', index_code=idx, date_cols=dt_cols,
+                col_mapping={'con_ts_code': 'wind_code', 'in_date': 'entry_dt', 'out_date': 'remove_dt'},
+                fields=['con_ts_code', *dt_cols]
+            ).fillna({'remove_dt': pd.Timestamp.max}).assign(sector_code=code)
+            yield code, data
 
 
 # class AShareAnnouncement(WebCrawlerJob):
@@ -283,7 +309,7 @@ if __name__ == '__main__':
 
     create_all_table()
     AShareDescription().run()
-    # AShareEODDerivativeIndicator().run()
+    AShareEODDerivativeIndicator().run()
     ASharePrice().run()
     AShareSuspend().run()
     AShareIndustry().run()

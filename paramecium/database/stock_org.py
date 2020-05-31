@@ -12,8 +12,7 @@ codes.to_clipboard(index=False)
 """
 from .utils import *
 import sqlalchemy.dialects.postgresql as pg
-from uuid import uuid1
-uuid1()
+
 
 class AShareDescription(BaseORM):
     """
@@ -120,6 +119,7 @@ class AShareSector(BaseORM):
     """
     A股板块信息
     - 中证行业成分(2016): http://tushare.xcsc.com:7173/document/2?doc_id=10212
+    - 申万: http://124.232.155.79:7173/document/2?doc_id=10181
     """
     __tablename__ = 'stock_org_sector'
 

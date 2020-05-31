@@ -61,3 +61,7 @@ def bulk_insert(records, model):
     with get_session() as session:
         logger.info(f'bulk insert data into {model}...')
         session.bulk_insert_mappings(model, records)
+
+
+def flat_1dim(folder_data):
+    return (entry for record in folder_data for entry in record)

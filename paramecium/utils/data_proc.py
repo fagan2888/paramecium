@@ -63,7 +63,7 @@ class OutlierMAD(AbstractTransformer):
         return self
 
     def transform(self, raw_data):
-        return np.hstack((self._trans_single_row(*kws).reshape((-1, 1)) for kws in zip(self._median, self._mad, raw_data.T)))
+        return np.hstack([self._map_row(*kws).reshape((-1, 1)) for kws in zip(self._median, self._mad, raw_data.T)])
 
     @staticmethod
     def _min_max(arr):
@@ -72,7 +72,7 @@ class OutlierMAD(AbstractTransformer):
         else:
             return arr
 
-    def _trans_single_row(self, median, mad, row):
+    def _map_row(self, median, mad, row):
         sigma = mad * 1.4826
         lower_bound, upper_bound = median - 3 * sigma, median + 3 * sigma
 

@@ -7,7 +7,7 @@
 import pandas as pd
 import sqlalchemy as sa
 
-from paramecium.database import get_dates, last_td_date
+from paramecium.database.trade_calendar import get_dates, last_td_date
 from paramecium.database.utils import get_sql_engine, get_session
 from paramecium.interface import AbstractFactor, AbstractFactorIO
 
@@ -48,7 +48,7 @@ class FactorDBTool(AbstractFactorIO):
         # check if data exist
         if if_exist == 1:
             with get_session() as session:
-                session.execute(f"delete from {self.table_name} where trade_dt='{dt:%Y-%m-%d}")
+                session.execute(f"delete from {self.table_name} where trade_dt='{dt:%Y-%m-%d}'")
         else:
             exist_rows = pd.read_sql(
                 f"select count(*) from {self.table_name} where trade_dt='{dt:%Y-%m-%d}'",
@@ -69,7 +69,7 @@ class FactorDBTool(AbstractFactorIO):
 
     def fetch_snapshot(self, dt):
         snapshot = pd.read_sql(
-            f"select * from {self.table_name} where trade_dt='{dt:%Y-%m-%d}",
+            f"select * from {self.table_name} where trade_dt='{dt:%Y-%m-%d}'",
             con=get_sql_engine('postgres'), index_col=['wind_code'],
         ).drop(['updated_at', 'oid', 'trade_dt'], errors='ignore', axis=1)
         if snapshot.empty:

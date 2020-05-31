@@ -42,6 +42,9 @@ class TradeStatus(CustomEnum):
 class SectorEnum(CustomEnum):
     """ Sector 类型: 开始字母 """
 
-    STOCK_SEC_ZZ = '72'
+    # Stock
+    SEC_ZZ = '72'
+    SEC_SW = '61'
 
+    # Mutual Fund
     MF_TYPE = '200101'

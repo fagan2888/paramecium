@@ -58,21 +58,14 @@ class MutualFundSale(BaseORM):
 class MutualFundNav(BaseORM):
     __tablename__ = 'mf_org_nav'
 
-    oid = sa.Column(UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(40), index=True)
     ann_date = sa.Column(sa.Date)
-    trade_dt = sa.Column(sa.Date)
+    trade_dt = sa.Column(sa.Date, index=True)
     unit_nav = sa.Column(sa.Float)  #
     acc_nav = sa.Column(sa.Float)
-    adj_nav = sa.Column(sa.Float)
-    sa.UniqueConstraint(trade_dt, wind_code)
+    adj_factor = sa.Column(sa.Float)
 
-
-class MutualFundAUM(BaseORM):
-    __tablename__ = 'mf_org_aum'
-
-    # use same id in nav table
-    oid = sa.Column(UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
     net_asset = sa.Column(sa.Float)  # float Y 资产净值
     total_netasset = sa.Column(sa.Float)  # float Y 合计资产净值
 
@@ -80,11 +73,27 @@ class MutualFundAUM(BaseORM):
 class MutualFundManager(BaseORM):
     __tablename__ = 'mf_org_manager'
 
-    oid = sa.Column(UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(40), index=True)  # ts_code str Y 基金代码
     ann_date = sa.Column(sa.Date)  # ann_date str Y 公告日期
     manager_name = sa.Column(sa.String(40))  # name str Y 基金经理姓名
     start_dt = sa.Column(sa.Date, index=True)  # str Y 任职日期begin_date
     end_dt = sa.Column(sa.Date)  # str Y 离任日期end_date
 
-    sa.UniqueConstraint(wind_code, manager_name, start_dt)
+    uk = sa.UniqueConstraint(wind_code, manager_name, start_dt)
+
+
+class MutualFundSector(BaseORM):
+    """
+    A股板块信息
+    - 中证行业成分(2016): http://tushare.xcsc.com:7173/document/2?doc_id=10212
+    - 申万: http://124.232.155.79:7173/document/2?doc_id=10181
+    """
+    __tablename__ = 'mf_org_sector'
+
+    oid = gen_oid()
+
+    wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
+    sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code
+    entry_dt = sa.Column(sa.Date, index=True)  # 纳入日期 entry_dt
+    remove_dt = sa.Column(sa.Date)  # 剔除日期 remove_dt
