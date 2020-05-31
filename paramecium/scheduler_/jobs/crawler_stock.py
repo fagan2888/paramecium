@@ -5,8 +5,13 @@
 """
 from itertools import product
 
+import numpy as np
+import pandas as pd
+import sqlalchemy as sa
+
 from paramecium.const import TradeStatus, SectorEnum
 from paramecium.database import stock_org, enum_code
+from paramecium.scheduler_.jobs._crawler import TushareCrawlerJob
 
 
 class AShareDescription(TushareCrawlerJob):
@@ -217,7 +222,7 @@ class AShareIndustry(TushareCrawlerJob):
             )
 
     def get_zz_industry(self):
-        with get_session() as session:
+        with self.get_session() as session:
             industry_codes = session.query(
                 self.enum_tb.code
             ).filter(
@@ -236,7 +241,7 @@ class AShareIndustry(TushareCrawlerJob):
 
     def get_sw_industry(self):
         # TODO: not exist in prod, still have problem in dev server.
-        with get_session() as session:
+        with self.get_session() as session:
             industry_codes = session.query(
                 self.enum_tb.code,
                 self.enum_tb.memo,
