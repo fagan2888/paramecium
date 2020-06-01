@@ -7,7 +7,7 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
-
+import sqlalchemy as sa
 from paramecium.const import AssetEnum
 from paramecium.database import StockUniverse
 from paramecium.interface import AbstractFactor
@@ -20,13 +20,18 @@ class FamaFrench(AbstractFactor):
     Classic Fama-French 3 Factor
     """
     asset_type = AssetEnum.STOCK
+    start_date = pd.Timestamp('2001-11-30')
 
     def __init__(self):
         self.universe = StockUniverse(issue_month=12, no_st=True, no_suspend=True)
         self.value_scale = ScaleMinMax(
-            min_func=partial(np.percentile, q=25, axis=0),
-            max_func=partial(np.percentile, q=75, axis=0)
+            min_func=partial(np.percentile, q=30, axis=0),
+            max_func=partial(np.percentile, q=70, axis=0)
         ).fit_transform
+
+    @property
+    def field_types(self):
+        return dict(label=sa.String(2), **super().field_types)
 
     def get_empty_table(self):
         return pd.DataFrame(
@@ -36,32 +41,29 @@ class FamaFrench(AbstractFactor):
     def compute(self, dt):
         # stock match case
         universe = self.universe.get_instruments(dt)
-        # sector = get_sector(self.asset_type, valid_dt=dt, sector_type=SectorEnum.STOCK_SEC_ZZ)
-        # sector = sector.set_index('wind_code')['sector_code'].map(lambda x: x[:4] if x else x).filter(universe, axis=0)
+        # sector = get_sector(self.asset_type, valid_dt=dt, sector_type=SectorEnum.STOCK_SEC_ZZ).set_index('wind_code')
+        # sector = sector['sector_code'].map(lambda x: x[:4] if x else x).filter(universe, axis=0)
 
         # get derivative data
         derivative = get_tushare_api().daily_basic(
             trade_date=f'{dt:%Y%m%d}',
-            fields="ts_code,tot_mv,mv,pb_new"
+            fields="ts_code,mv,pb_new"
         ).rename(
-            columns={'ts_code': 'wind_code', 'tot_mv': 'capt'}
+            columns={'ts_code': 'wind_code', 'mv': 'capt'}
         ).set_index('wind_code').filter(universe, axis=0).dropna()  # .reindex(index=sector.index)
 
         # size value is log10(mv)
-        derivative['size'] = np.log10(derivative['mv'])
+        derivative['size'] = np.log10(derivative['capt'])
         derivative['value'] = 1 / derivative['pb_new']
         for proc in (OutlierMAD(), ScaleNormalize()):
             derivative.loc[:, ['size', 'value']] = proc.fit_transform(derivative.loc[:, ['size', 'value']].values)
         # derivative = derivative.fillna(derivative.groupby(sector)[['size', 'value']].mean())
 
         # re scale data to make style identify easier.
-        # use robust scale method: https://mp.weixin.qq.com/s/2m7JXy2RdbRA1SKgFORgKA
-        # but size factor use cum mv to cut
-        tot_mv = derivative['mv'].sum()
-        cum_mv = derivative['mv'].sort_values(ascending=False).cumsum()
+        # use robust scale method and cut point from https://mp.weixin.qq.com/s/2m7JXy2RdbRA1SKgFORgKA
         derivative.loc[:, 'size'] = ScaleMinMax(
-            min_func=lambda arr: derivative.loc[cum_mv.loc[cum_mv.ge(tot_mv * 0.65)].idxmin(), 'size'],
-            max_func=lambda arr: derivative.loc[cum_mv.loc[cum_mv.le(tot_mv * 0.35)].idxmax(), 'size']
+            min_func=lambda arr: derivative['size'].sort_values().iloc[-500],
+            max_func=lambda arr: derivative['size'].sort_values().iloc[-200]
         ).fit_transform(derivative.loc[:, 'size']) * 200 - 100
         derivative['label'] = pd.cut(derivative['size'], bins=[-np.inf, -100, 100, np.inf], labels=list('SMB'))
         # value label should be neutralized by size

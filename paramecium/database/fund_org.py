@@ -3,8 +3,6 @@
 @Time: 2020/5/12 21:00
 @Author: Sue Zhu
 """
-from sqlalchemy.dialects.postgresql import UUID
-
 from .utils import *
 
 

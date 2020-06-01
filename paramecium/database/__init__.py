@@ -5,7 +5,7 @@
 """
 __all__ = [
     'get_dates', 'last_td_date',
-    'create_all_table', 'get_session', 'get_sql_engine',
+    'get_session', 'get_sql_engine',
     'StockUniverse', 'FundUniverse',
     'get_price', 'get_sector',
 ]
@@ -16,11 +16,17 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from paramecium.const import *
-from paramecium.database import fund_org, stock_org, enum_code
-from paramecium.database.trade_calendar import get_dates, last_td_date
-from paramecium.database.utils import create_all_table, get_session, get_sql_engine, BaseORM, flat_1dim
-from paramecium.interface import AbstractUniverse
+from . import fund_org, stock_org, enum_code, index_org
+from .trade_calendar import get_dates, last_td_date
+from .utils import get_session, get_sql_engine, BaseORM, flat_1dim, logger
+from ..const import *
+from ..interface import AbstractUniverse
+
+
+def create_all_table():
+    from .utils import BaseORM
+    logger.info('creating all sqlalchemy data models')
+    BaseORM.metadata.create_all(get_sql_engine('postgres'))
 
 
 # ------------- Universe -----------------------------------------------------------

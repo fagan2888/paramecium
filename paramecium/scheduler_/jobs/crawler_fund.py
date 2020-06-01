@@ -11,7 +11,7 @@ from requests import request
 
 from paramecium.database import fund_org, create_all_table
 from paramecium.utils import chunk
-from paramecium.scheduler_.jobs._crawler import TushareCrawlerJob, WebCrawlerJob
+from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob, WebCrawlerJob
 
 
 class FundDescription(TushareCrawlerJob):

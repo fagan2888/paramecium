@@ -10,8 +10,8 @@ import pandas as pd
 import sqlalchemy as sa
 
 from paramecium.const import TradeStatus, SectorEnum
-from paramecium.database import stock_org, enum_code
-from paramecium.scheduler_.jobs._crawler import TushareCrawlerJob
+from paramecium.database import stock_org, enum_code, create_all_table
+from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob
 
 
 class AShareDescription(TushareCrawlerJob):
@@ -310,8 +310,6 @@ class AShareIndustry(TushareCrawlerJob):
 
 
 if __name__ == '__main__':
-    from paramecium.database import create_all_table
-
     create_all_table()
     AShareDescription().run()
     AShareEODDerivativeIndicator().run()

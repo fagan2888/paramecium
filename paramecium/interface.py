@@ -37,7 +37,7 @@ class AbstractUniverse(metaclass=abc.ABCMeta):
 
 class AbstractFactor(metaclass=abc.ABCMeta):
     asset_type: AssetEnum = None
-    start_date = pd.Timestamp
+    start_date = pd.Timestamp.min
 
     @property
     def name(self):
@@ -63,7 +63,7 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
 
     @property
     def logger(self):
-        return logging.getLogger(f'{self.__class__!r}({self._factor.__class__!r})')
+        return logging.getLogger(f'{self.__class__.__name__:s}({self._factor.__class__.__name__:s})')
 
     @property
     def table_name(self):
@@ -99,11 +99,11 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
         """
         return ()
 
-    def localized_time_series(self, start, end=None, freq=FreqEnum.M, if_exist=1):
+    def localized_time_series(self, start=None, end=None, freq=FreqEnum.M, if_exist=1):
         for t in self._get_dates(start, end, freq):
             self.localized_snapshot(t, if_exist)
 
-    def fetch_time_series(self, start, end=None, freq=FreqEnum.M):
+    def fetch_time_series(self, start=None, end=None, freq=FreqEnum.M):
         return pd.concat(
             {t: self.fetch_snapshot(t) for t in self._get_dates(start, end, freq)},
             axis=0, sort=False, names=['trade_dt', 'wind_code']

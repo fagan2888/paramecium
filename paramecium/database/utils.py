@@ -37,11 +37,6 @@ def get_sql_engine(env='postgres', **kwargs):
 _Sa_Session = sa_orm.scoped_session(sa_orm.sessionmaker(bind=get_sql_engine(env='postgres')))
 
 
-def create_all_table():
-    logger.info('create all sqlalchemy data models')
-    BaseORM.metadata.create_all(get_sql_engine('postgres'))
-
-
 @contextmanager
 def get_session():
     session = _Sa_Session()

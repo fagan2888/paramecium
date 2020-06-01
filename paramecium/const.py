@@ -43,8 +43,20 @@ class SectorEnum(CustomEnum):
     """ Sector 类型: 开始字母 """
 
     # Stock
-    SEC_ZZ = '72'
-    SEC_SW = '61'
+    SEC_SW = '61'  # 申万行业分类
+    SEC_WIND = '62'  # 万得全球行业分类标准
+    SEC_SEC_OLD = '04'  # 证监会行业分类
+    SEC_SEC = '12'  # 证监会行业分类(2012版)
+    SEC_GICS = '67'  # GICS(全球行业分类标准)
+    SEC_ZZ_OLD = '66'  # 中证行业分类
+    SEC_ZZ = '72'  # 中证行业分类(2016)
+    SEC_CITICS = 'b1'  # 中信行业分类
+
+    SEC_REGIONAL = '03'  # 地域板块
+    SEC_CONCEPT = '02'  # 概念板块
 
     # Mutual Fund
     MF_TYPE = '200101'
+    MF_YH = '2003'  # 银河基金分类
+
+    BOND = '0808'  # 中债分类

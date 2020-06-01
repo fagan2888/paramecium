@@ -20,8 +20,10 @@ from paramecium.utils.data_api import get_tushare_api
 from paramecium.scheduler_.scheduler import job
 
 
-class _BaseDBJob(job.JobBase):
-    meta_args = None  # tuple of dict with type and description, both string.
+class BaseLocalizerJob(job.JobBase):
+    # tuple of dict with type and description, both string.
+    # For example: {'type': 'string', 'description': 'name of this channel'}
+    meta_args = None
     meta_args_example = ''  # string, json like
 
     def __init__(self, job_id=None, execution_id=None):
@@ -101,7 +103,7 @@ class _BaseDBJob(job.JobBase):
     @staticmethod
     @lru_cache()
     def get_dates(freq=None):
-        with _BaseDBJob.get_session() as session:
+        with BaseLocalizerJob.get_session() as session:
             dates = get_dates(freq)
         return dates
 
@@ -113,7 +115,7 @@ class _BaseDBJob(job.JobBase):
         return max((t for t in self.get_dates('D') if t <= cur_date))
 
 
-class TushareCrawlerJob(_BaseDBJob):
+class TushareCrawlerJob(BaseLocalizerJob):
 
     def __init__(self, job_id=None, execution_id=None, env='tushare_prod'):
         self.env = env
@@ -132,7 +134,7 @@ class TushareCrawlerJob(_BaseDBJob):
         return result
 
 
-class WebCrawlerJob(_BaseDBJob):
+class WebCrawlerJob(BaseLocalizerJob):
 
     def request(self, method, url):
         return request(

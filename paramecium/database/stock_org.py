@@ -16,7 +16,7 @@ import sqlalchemy.dialects.postgresql as pg
 
 class AShareDescription(BaseORM):
     """
-    A股基本资料
+    A股基本资料 AShareDescription
     """
     __tablename__ = 'stock_org_description'
 
@@ -99,8 +99,6 @@ class AShareEODDerivativeIndicator(BaseORM):
     suspend_status = sa.Column(sa.Integer, index=True)
     # 涨跌停状态(1表示涨停;0表示非涨停或跌停;-1表示跌停) up_down_limit_status
 
-    price_high_52w = sa.Column(pg.REAL)  # 52周最高价 high_52w
-    price_low_52w = sa.Column(pg.REAL)  # 52周最低价 low_52w
     adj_high_52w = sa.Column(pg.REAL)  # 52周最高价(复权) adj_high_52w
     adj_low_52w = sa.Column(pg.REAL)  # 52周最低价(复权) adj_low_52w
 

@@ -77,13 +77,21 @@ class FactorDBTool(AbstractFactorIO):
         return snapshot
 
     def _get_dates(self, start, end, freq):
-        real_start = max((t for t in get_dates(freq) if t <= pd.Timestamp(start)))
+        if start is None:
+            real_start = self._factor.start_date
+        else:
+            real_start = max((t for t in get_dates(freq) if self._factor.start_date <= t <= pd.Timestamp(start)))
         real_end = min((last_td_date(), pd.Timestamp(end) if end is not None else pd.Timestamp.max))
         return (t for t in get_dates(freq) if real_start <= t <= real_end)
+
+    def get_latest_date(self):
+        return pd.to_datetime(pd.read_sql(
+            f"select max(trade_dt) from {self.table_name}", get_sql_engine('postgres'),
+        ).squeeze())
 
 
 if __name__ == '__main__':
     from paramecium.factor_pool.stock_classic import FamaFrench
 
     obj = FactorDBTool(FamaFrench())
-    obj.localized_time_series('2001-12-25', )
+    # obj.localized_time_series('2009-12-31', )
