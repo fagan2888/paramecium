@@ -53,9 +53,19 @@ class StockUniverse(AbstractUniverse):
                 stock_org.AShareEODPrice.trade_dt == dt,
                 stock_org.AShareEODPrice.trade_status == 0
             ).all()
-            # TODO: need data to clean st stock
+            # TODO: st source should be change
+            query_st = pd.DataFrame(
+                session.query(
+                    stock_org.ASharePreviousName.wind_code,
+                    stock_org.ASharePreviousName.new_name
+                ).filter(
+                    stock_org.ASharePreviousName.entry_dt <= dt,
+                    stock_org.ASharePreviousName.remove_dt >= dt
+                ).all()
+            )
+            stock_dt = query_st.loc[query_st['new_name'].str.contains(r'ST|PT'), 'wind_code']
 
-        return {*flat_1dim(query_desc)} - {*flat_1dim(query_trade)}
+        return {*flat_1dim(query_desc)} - {*flat_1dim(query_trade)} - {*stock_dt}
 
 
 @lru_cache()
@@ -108,16 +118,16 @@ def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
     if code:
         filters.append(model.wind_code == code)
 
+    if fields:
+        sa_fields = (getattr(model, c) for c in {*fields, 'wind_code', 'trade_dt'})
+        # sa_fields = (c for c in model.__table__.c if c.key in (*fields, 'wind_code', 'trade_dt'))
+    else:
+        sa_fields = (c for c in model.__table__.c if c.key not in ('oid', 'updated_at'))
+
     with get_session() as session:
-        # TODO: query with whole model.
-        data = pd.DataFrame(session.query(model).filter(*filters).all()).fillna(np.nan)
+        data = pd.DataFrame(session.query(*sa_fields).filter(*filters).all()).fillna(np.nan)
 
     data.loc[:, 'trade_dt'] = pd.to_datetime(data['trade_dt'])
-
-    if fields:
-        data = data.filter(fields, axis=1)
-    else:
-        data = data.drop(['oid', 'updated_at'], axis=1, errors='ignore')
 
     return data
 

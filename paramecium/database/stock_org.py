@@ -10,8 +10,8 @@ codes = tb.apply(lambda ser: f"{ser['名称']} = sa.Column(sa.String())  # {ser[
 codes.to_clipboard(index=False)
 
 """
+
 from .utils import *
-import sqlalchemy.dialects.postgresql as pg
 
 
 class AShareDescription(BaseORM):
@@ -128,4 +128,54 @@ class AShareSector(BaseORM):
     entry_dt = sa.Column(sa.Date)  # 纳入日期 entry_dt
     remove_dt = sa.Column(sa.Date)  # 剔除日期 remove_dt
 
-    u_key = sa.UniqueConstraint(wind_code, sector_code, entry_dt, name=f"uk_{__tablename__}")
+
+class ASharePreviousName(BaseORM):
+    """
+    A股曾用名
+
+    目前从jqdata下载并更新
+    ==== jqdata code ===========================
+    from itertools import groupby, product
+    import pandas as pd
+    import seaborn as sns
+    from jqfactor import analyze_factor, get_factor_values
+    from jqdata import finance
+    from sqlalchemy import func as sa_func
+
+    stk_name_history = []
+    max_id = finance.run_query(query(sa_func.max(finance.STK_NAME_HISTORY.id).label('max_id'))).squeeze()
+
+    for start, end in zip(range(0, (max_id//2500 + 1)*2500, 2500), range(2500, (max_id//2500 + 2)*2500, 2500)):
+        stk_name_history.append(finance.run_query(
+            query(
+                finance.STK_NAME_HISTORY.id,
+                finance.STK_NAME_HISTORY.code,
+                finance.STK_NAME_HISTORY.new_name,
+                finance.STK_NAME_HISTORY.start_date,
+                finance.STK_NAME_HISTORY.pub_date,
+                finance.STK_NAME_HISTORY.reason,
+            ).filter(finance.STK_NAME_HISTORY.id>=start, finance.STK_NAME_HISTORY.id<end)
+        ).fillna(np.nan).set_index('id'))
+    pd.concat(stk_name_history).to_csv(f'stock_name_history_{pd.Timestamp.now():%Y%m%d}.csv')
+
+    ==== local code ===========================
+    import pandas as pd
+    from paramecium.database.utils import get_sql_engine
+    from paramecium.utils.data_api import get_tushare_api
+    api = get_tushare_api()
+    stock_name = pd.read_csv("others/stock_name_history_20200602.csv", parse_dates=['start_date'])
+    after = stock_name.sort_values('start_date').groupby('code').apply(lambda df: df.assign(end_date=df['start_date'].shift(-1)-pd.Timedelta(days=1)))
+    wind_codes = api.stock_basic(fields='ts_code').squeeze()
+    wind_codes.index = wind_codes.map(lambda x: x[:6])
+    after.loc[:, 'code'] = after['code'].map(lambda x: x[:6]).map(wind_codes)
+    after.dropna(subset=['code']).loc[:, ['code', 'new_name', 'start_date', 'pub_date', 'reason', 'end_date']].to_sql('stock_jq_previous_name', get_sql_engine(), index=False)
+    """
+    __tablename__ = 'stock_jq_previous_name'
+
+    oid = gen_oid()
+
+    wind_code = sa.Column(name='code', type_=sa.String(10), index=True)  # ts代码 ts_code
+    new_name = sa.Column(name='new_name', type_=sa.String(40), index=True)  # 中证行业代码 index_code
+    entry_dt = sa.Column(name='start_date', type_=sa.Date)  # 纳入日期 entry_dt
+    remove_dt = sa.Column(name='end_date', type_=sa.Date)  # 剔除日期 remove_dt
+    ann_date = sa.Column(name='pub_date', type_=sa.Date)  # 公告日期 remove_dt

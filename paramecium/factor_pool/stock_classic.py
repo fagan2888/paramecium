@@ -20,13 +20,13 @@ class FamaFrench(AbstractFactor):
     Classic Fama-French 3 Factor
     """
     asset_type = AssetEnum.STOCK
-    start_date = pd.Timestamp('2001-11-30')
+    start_date = pd.Timestamp('2003-12-31')
 
     def __init__(self):
         self.universe = StockUniverse(issue_month=12, no_st=True, no_suspend=True)
         self.value_scale = ScaleMinMax(
-            min_func=partial(np.percentile, q=30, axis=0),
-            max_func=partial(np.percentile, q=70, axis=0)
+            min_func=partial(np.nanpercentile, q=30, axis=0),
+            max_func=partial(np.nanpercentile, q=70, axis=0)
         ).fit_transform
 
     @property

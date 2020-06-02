@@ -35,7 +35,7 @@ def get_sql_engine(env='postgres', **kwargs):
 
 
 _Sa_Session = sa_orm.scoped_session(sa_orm.sessionmaker(
-    bind=get_sql_engine(env='postgres', echo=True)
+    bind=get_sql_engine(env='postgres')  # , echo=True
 ))
 
 
