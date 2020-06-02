@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from . import fund_org, stock_org, enum_code, index_org
+from . import fund_org, stock_org, enum_code, index_org, index_derivative
 from .trade_calendar import get_dates, last_td_date
 from .utils import get_session, get_sql_engine, BaseORM, flat_1dim, logger
 from ..const import *
@@ -98,15 +98,19 @@ def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
         raise KeyError(f'Undefined Asset {asset.value}')
 
     filters = []
-    if start:
-        filters.append(model.trade_dt >= start)
-    if end:
-        filters.append(model.trade_dt >= end)
+    if start and end and start == end:
+        filters.append(model.trade_dt == start)
+    else:
+        if start:
+            filters.append(model.trade_dt >= start)
+        if end:
+            filters.append(model.trade_dt <= end)
     if code:
         filters.append(model.wind_code == code)
 
     with get_session() as session:
-        data = pd.DataFrame(session.query(model).filter(*filters)).fillna(np.nan)
+        # TODO: query with whole model.
+        data = pd.DataFrame(session.query(model).filter(*filters).all()).fillna(np.nan)
 
     data.loc[:, 'trade_dt'] = pd.to_datetime(data['trade_dt'])
 

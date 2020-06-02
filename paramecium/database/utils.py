@@ -34,7 +34,9 @@ def get_sql_engine(env='postgres', **kwargs):
     return sa.create_engine(sa_url(**get_data_config(env)), **params)
 
 
-_Sa_Session = sa_orm.scoped_session(sa_orm.sessionmaker(bind=get_sql_engine(env='postgres')))
+_Sa_Session = sa_orm.scoped_session(sa_orm.sessionmaker(
+    bind=get_sql_engine(env='postgres', echo=True)
+))
 
 
 @contextmanager

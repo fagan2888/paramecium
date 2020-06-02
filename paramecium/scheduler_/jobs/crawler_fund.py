@@ -69,26 +69,26 @@ class FundSales(WebCrawlerJob):
     )
 
     def run(self, n_records=3000, *args, **kwargs):
-        respons_raw = request(
+        responds_raw = request(
             "GET",
-            f"https://www.xcsc.com/servlet/json?funcNo=742100&curtPageNo=1&numPerPage={n_records}&isDxsale=0"
+            f"https://wpt.xcsc.com/lcsc/servlet/json?funcNo=24030123&page=1&numPerPage={n_records}"
         )
-        respons_json = json.loads(respons_raw.text)['results'][0]
-        if respons_json['totalPages'] > 1:
+        responds_json = json.loads(responds_raw.text)['results'][0]
+        if responds_json['totalPages'] > 1:
             self.get_logger().warn(
                 f"the results not cover all funds for sale, please make "
-                f"`n_records` more than {respons_json['totalRows']}.")
-        respons_df = pd.DataFrame(respons_json['data']).reindex(columns=[
+                f"`n_records` more than {responds_json['totalRows']}.")
+        responds_df = pd.DataFrame(responds_json['data']).reindex(columns=[
             'product_code', 'product_id', 'product_abbr', 'risk_level', 'per_buy_limit', 'product_status',
             'subscribe_start_time', 'subscribe_end_time', 'purchase_rates', 'purchase_rates_dis',
         ]).replace('', np.nan)
         for c in ('product_id', 'risk_level', 'per_buy_limit', 'product_status',
                   'purchase_rates', 'purchase_rates_dis'):
-            respons_df.loc[:, c] = pd.to_numeric(respons_df[c], errors='coerce')
+            responds_df.loc[:, c] = pd.to_numeric(responds_df[c], errors='coerce')
         for c in ('subscribe_start_time', 'subscribe_end_time'):
-            respons_df.loc[:, c] = pd.to_datetime(respons_df[c].replace('0', np.nan), format='%Y%m%d')
+            responds_df.loc[:, c] = pd.to_datetime(responds_df[c].replace('0', np.nan), format='%Y%m%d')
         model = fund_org.MutualFundSale
-        self.upsert_data(respons_df.astype({
+        self.upsert_data(responds_df.astype({
             'product_id': int, 'risk_level': int,
             'per_buy_limit': float, 'product_status': int,
             'purchase_rates': float, 'purchase_rates_dis': float,

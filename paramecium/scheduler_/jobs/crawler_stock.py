@@ -10,7 +10,7 @@ import pandas as pd
 import sqlalchemy as sa
 
 from paramecium.const import TradeStatus, SectorEnum
-from paramecium.database import stock_org, enum_code, create_all_table
+from paramecium.database import stock_org, enum_code, get_dates
 from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob
 
 
@@ -64,7 +64,7 @@ class _CrawlerEOD(TushareCrawlerJob):
             max_dt = pd.Timestamp('1990-01-01')
 
         last_dt = self.last_td_date
-        trade_dates = [i for i in self.get_dates('D') if max_dt < i <= last_dt]
+        trade_dates = [i for i in get_dates('D') if max_dt < i <= last_dt]
         price = pd.DataFrame()
         for i, dt in enumerate(trade_dates):
             try:
@@ -160,7 +160,7 @@ class AShareSuspend(TushareCrawlerJob):
                 # data exist, download by date
                 query_params = ({key: f'{dt:%Y%m%d}'} for key, dt in product(
                     ('suspend_date', 'resume_date'),
-                    (i for i in self.get_dates('D') if max_dt < i <= self.last_td_date)
+                    (i for i in get_dates('D') if max_dt < i <= self.last_td_date)
                 ))
 
         for q in query_params:
@@ -310,6 +310,8 @@ class AShareIndustry(TushareCrawlerJob):
 
 
 if __name__ == '__main__':
+    from paramecium.database import create_all_table
+
     create_all_table()
     AShareDescription().run()
     AShareEODDerivativeIndicator().run()

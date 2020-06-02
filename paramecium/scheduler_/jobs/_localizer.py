@@ -100,19 +100,12 @@ class BaseLocalizerJob(job.JobBase):
                     duplicates.loc[lambda df: df.duplicated(keep='last')].index.tolist()
                 )).delete(synchronize_session='fetch')
 
-    @staticmethod
-    @lru_cache()
-    def get_dates(freq=None):
-        with BaseLocalizerJob.get_session() as session:
-            dates = get_dates(freq)
-        return dates
-
     @property
     def last_td_date(self):
         cur_date = pd.Timestamp.now()
         if cur_date.hour <= 22:
             cur_date -= pd.Timedelta(days=1)
-        return max((t for t in self.get_dates('D') if t <= cur_date))
+        return max((t for t in get_dates('D') if t <= cur_date))
 
 
 class TushareCrawlerJob(BaseLocalizerJob):

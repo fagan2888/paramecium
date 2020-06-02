@@ -37,3 +37,14 @@ def get_ifind_api():
         yield err_code
     _log.debug("Try to logout IFind")
     THS_iFinDLogout()
+
+
+@contextmanager
+def get_wind_api():
+    from WindPy import w
+    w.start()  # 默认命令超时时间为120秒，如需设置超时时间可以加入waitTime参数，例如waitTime=60,即设置命令超时时间为60秒
+    if w.isconnected():  # 判断WindPy是否已经登录成功
+        yield w
+    else:
+        _log.error("Wind API fail to be connected.")
+    w.stop()
