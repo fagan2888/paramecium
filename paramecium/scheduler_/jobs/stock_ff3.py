@@ -70,7 +70,7 @@ class StockFF3Factor(BaseLocalizerJob):
         else:
             # else table has data, then drop last 7 days data
             real_start = max((
-                start,
+                pd.Timestamp(start),
                 pd.to_datetime(real_start) - pd.Timedelta(days=7)
             ))
             self.get_logger().debug(f'`max_dt` is not None, run from {real_start:%Y-%m-%d}.')
@@ -150,4 +150,4 @@ class StockFF3Factor(BaseLocalizerJob):
 
 if __name__ == '__main__':
     create_all_table()
-    StockFF3Factor().run(end='2020-05-15')
+    StockFF3Factor().run(end='2020-05-31')

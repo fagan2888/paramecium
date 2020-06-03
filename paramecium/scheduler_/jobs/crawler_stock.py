@@ -314,7 +314,7 @@ if __name__ == '__main__':
 
     create_all_table()
     AShareDescription().run()
-    AShareEODDerivativeIndicator().run()
-    ASharePrice().run()
+    # ASharePrice().run()
+    # AShareEODDerivativeIndicator().run()
     AShareSuspend().run()
-    AShareIndustry().run()
+    # AShareIndustry().run()

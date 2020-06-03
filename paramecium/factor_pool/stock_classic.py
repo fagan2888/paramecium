@@ -23,7 +23,7 @@ class FamaFrench(AbstractFactor):
     start_date = pd.Timestamp('2003-12-31')
 
     def __init__(self):
-        self.universe = StockUniverse(issue_month=12, no_st=True, no_suspend=True)
+        self.universe = StockUniverse()
         self.value_scale = ScaleMinMax(
             min_func=partial(np.nanpercentile, q=30, axis=0),
             max_func=partial(np.nanpercentile, q=70, axis=0)
@@ -47,15 +47,15 @@ class FamaFrench(AbstractFactor):
         # get derivative data
         derivative = get_tushare_api().daily_basic(
             trade_date=f'{dt:%Y%m%d}',
-            fields="ts_code,mv,pb_new"
+            fields="ts_code,mv,pe_ttm"
         ).rename(
             columns={'ts_code': 'wind_code', 'mv': 'capt'}
         ).set_index('wind_code').filter(universe, axis=0).dropna()  # .reindex(index=sector.index)
 
         # size value is log10(mv)
         derivative['size'] = np.log10(derivative['capt'])
-        derivative['value'] = 1 / derivative['pb_new']
-        for proc in (OutlierMAD(), ScaleNormalize()):
+        derivative['value'] = 1 / derivative['pe_ttm']
+        for proc in (OutlierMAD(), ):
             derivative.loc[:, ['size', 'value']] = proc.fit_transform(derivative.loc[:, ['size', 'value']].values)
         # derivative = derivative.fillna(derivative.groupby(sector)[['size', 'value']].mean())
 

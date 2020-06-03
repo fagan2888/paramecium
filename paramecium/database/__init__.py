@@ -121,7 +121,6 @@ def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
 
     if fields:
         sa_fields = (getattr(model, c) for c in {*fields, 'wind_code', 'trade_dt'})
-        # sa_fields = (c for c in model.__table__.c if c.key in (*fields, 'wind_code', 'trade_dt'))
     else:
         sa_fields = (c for c in model.__table__.c if c.key not in ('oid', 'updated_at'))
 
