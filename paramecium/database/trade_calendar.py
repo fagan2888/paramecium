@@ -35,7 +35,7 @@ def get_dates(freq=None):
                 freq = freq.name
             query = query.filter(getattr(TradeCalendar, f'is_{freq.lower()}') == 1)
         data = flat_1dim(query.all())
-    return pd.to_datetime(list(data))
+    return pd.to_datetime(sorted(data))
 
 
 def last_td_date():

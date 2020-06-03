@@ -33,8 +33,9 @@ def create_all_table():
 @lru_cache()
 class StockUniverse(AbstractUniverse):
 
-    def __init__(self, issue_month=12, no_st=True, no_suspend=True):
-        self.issue = issue_month * 30
+    def __init__(self, issue_month=12, delist_month=1, no_st=True, no_suspend=True):
+        self.issue = issue_month * 31
+        self.delist = delist_month * 31
         self.no_st = no_st
         self.no_suspend = no_suspend
 
@@ -44,8 +45,8 @@ class StockUniverse(AbstractUniverse):
             query_desc = session.query(
                 stock_org.AShareDescription.wind_code,
             ).filter(
-                stock_org.AShareDescription.list_dt <= dt - pd.Timedelta(days=self.issue),
-                stock_org.AShareDescription.delist_dt >= dt,
+                stock_org.AShareDescription.list_dt < (dt - pd.Timedelta(days=self.issue)),
+                stock_org.AShareDescription.delist_dt > (dt + pd.Timedelta(days=self.delist)),
             ).all()
             query_trade = session.query(
                 stock_org.AShareEODPrice.wind_code
