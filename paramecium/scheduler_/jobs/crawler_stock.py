@@ -19,7 +19,6 @@ class AShareDescription(TushareCrawlerJob):
     Crawling stock description from tushare
     http://tushare.xcsc.com:7173/document/2?doc_id=25
     """
-
     _COL = {
         'ts_code': 'wind_code',
         'name': 'short_name',
@@ -51,7 +50,7 @@ class _CrawlerEOD(TushareCrawlerJob):
     def model(self):
         return stock_org.AShareEODPrice
 
-    def get_tushare_data_(self, **func_kwargs):
+    def get_eod_data(self, **func_kwargs):
         return NotImplementedError
 
     def run(self, *args, **kwargs):
@@ -69,7 +68,7 @@ class _CrawlerEOD(TushareCrawlerJob):
         for i, dt in enumerate(trade_dates):
             try:
                 # in case of data limit out.
-                price = pd.concat((price, self.get_tushare_data_(trade_date=f'{dt:%Y%m%d}')), axis=0)
+                price = pd.concat((price, self.get_eod_data(trade_date=f'{dt:%Y%m%d}')), axis=0)
             except Exception as e:
                 self.get_logger().error(f'error happends when run {repr(e)}')
                 break
@@ -92,7 +91,7 @@ class ASharePrice(_CrawlerEOD):
     def model(self):
         return stock_org.AShareEODPrice
 
-    def get_tushare_data_(self, **func_kwargs):
+    def get_eod_data(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
         mapping = {
             'ts_code': 'wind_code',
@@ -179,7 +178,7 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
     def model(self):
         return stock_org.AShareEODDerivativeIndicator
 
-    def get_tushare_data_(self, **func_kwargs):
+    def get_eod_data(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
 
         mapping = {
@@ -314,7 +313,7 @@ if __name__ == '__main__':
 
     create_all_table()
     AShareDescription().run()
-    # ASharePrice().run()
-    # AShareEODDerivativeIndicator().run()
+    ASharePrice().run()
+    AShareEODDerivativeIndicator().run()
     AShareSuspend().run()
-    # AShareIndustry().run()
+    AShareIndustry().run()

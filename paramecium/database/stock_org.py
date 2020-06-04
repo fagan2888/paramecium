@@ -22,15 +22,15 @@ class AShareDescription(BaseORM):
 
     wind_code = sa.Column(sa.String(10), primary_key=True)  # TS代码
     short_name = sa.Column(sa.String(100))  # 证券简称
-    pinyin = sa.Column(sa.String())  # 简称拼音
+    pinyin = sa.Column(sa.String(100))  # 简称拼音
     isin_code = sa.Column(sa.String(40))  # ISIN代码
     exchange = sa.Column(sa.String(4))  # 交易所,SSE:上交所,SZSE:深交所
     list_board = sa.Column(sa.String(10))  # 上市板类型
     list_dt = sa.Column(sa.Date, index=True)  # 上市日期
     delist_dt = sa.Column(sa.Date, index=True)  # 退市日期
-    currency = sa.Column(sa.String())  # 货币代码
+    currency = sa.Column(sa.String(40))  # 货币代码
     is_shsc = sa.Column(sa.Integer)  # 是否在沪股通或深港通范围内,0:否;1:沪股通;2:深股通
-    comp_code = sa.Column(sa.String())  # 公司代码
+    comp_code = sa.Column(sa.String(100))  # 公司代码
     comp_name = sa.Column(sa.String(100))  # 公司中文名称
     comp_name_en = sa.Column(sa.String(100))  # 公司英文名称
 

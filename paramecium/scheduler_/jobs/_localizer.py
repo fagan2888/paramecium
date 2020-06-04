@@ -115,6 +115,7 @@ class TushareCrawlerJob(BaseLocalizerJob):
         super().__init__(job_id, execution_id)
 
     def get_tushare_data(self, api_name, date_cols=None, fields=None, col_mapping=None, **func_kwargs):
+        self.get_logger().debug(f"{api_name} - {func_kwargs}")
         api = get_tushare_api(self.env)
         result = api.query(api_name, **func_kwargs, fields=','.join(fields) if fields else '').fillna(np.nan)
         if date_cols:

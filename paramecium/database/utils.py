@@ -10,6 +10,7 @@ import sqlalchemy as sa
 import sqlalchemy.dialects.postgresql as pg
 import sqlalchemy.orm as sa_orm
 from sqlalchemy.engine.url import URL as sa_url
+from sqlalchemy.exc import DataError
 from sqlalchemy.ext.declarative import declarative_base
 
 from paramecium.utils.configuration import get_data_config
@@ -46,6 +47,8 @@ def get_session():
     try:
         yield session
         session.commit()
+    except DataError as e:
+        breakpoint()
     except Exception as e:
         logger.error(f'fail to commit session for {e!r}')
         session.rollback()

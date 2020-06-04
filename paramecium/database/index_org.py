@@ -18,13 +18,14 @@ class IndexDescription(BaseORM):
     list_date = sa.Column(sa.Date)  # 发布日期 list_date
     weights_rule = sa.Column(sa.String(10))  # 加权方式 index_weights_rule
     publisher = sa.Column(sa.String(100))  # 发布方 publisher
-    index_code = sa.Column(sa.String(10))  # 指数类别代码 index_code
+    index_code = sa.Column(sa.String(10), index=True)  # 指数类别代码 index_code
     index_style = sa.Column(sa.String(40))  # 指数风格 index_style
     index_intro = sa.Column(sa.Text)  # 指数简介 index_intro
     weight_type = sa.Column(sa.String(100))  # 权重类型 weight_type
     expire_date = sa.Column(sa.Date)  # 终止发布日期 expire_date
     income_processing_method = sa.Column(sa.Text)  # 收益处理方式 income_processing_method
     change_history = sa.Column(sa.Text)  # 变更历史 change_history
+    localized = sa.Column(sa.Integer, default=0)
 
 
 class IndexEODPrice(BaseORM):
@@ -34,10 +35,10 @@ class IndexEODPrice(BaseORM):
     oid = gen_oid()
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
+    currency = sa.Column(sa.String(40))  # 货币代码 crncy_code
     open_ = sa.Column(pg.REAL)  # 开盘价(元) open
     high_ = sa.Column(pg.REAL)  # 最高价(元) high
     low_ = sa.Column(pg.REAL)  # 最低价(元) low
     close_ = sa.Column(pg.REAL)  # 收盘价(元) close
     volume_ = sa.Column(sa.Integer)  # 成交量(手) volume
     amount_ = sa.Column(pg.REAL)  # 成交金额(千元) amount
-    adj_factor = sa.Column(pg.REAL)  # 复权因子
