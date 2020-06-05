@@ -48,6 +48,7 @@ def get_session():
         yield session
         session.commit()
     except DataError as e:
+        print(repr(e))
         breakpoint()
     except Exception as e:
         logger.error(f'fail to commit session for {e!r}')

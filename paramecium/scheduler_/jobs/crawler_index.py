@@ -5,10 +5,11 @@
 """
 import pandas as pd
 import sqlalchemy as sa
-
+import numpy as np
 from paramecium.database import index_org
-from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob
+from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob, BaseLocalizerJob
 from paramecium.utils.configuration import get_type_codes
+from paramecium.utils.data_api import get_wind_api
 
 
 class IndexDescFromTS(TushareCrawlerJob):
@@ -83,20 +84,123 @@ class IndexDescFromTS(TushareCrawlerJob):
             ).update(dict(localized=-1, updated_at=sa.func.current_timestamp()), synchronize_session='fetch')
 
 
-class IndexDescWind():
-    pass
+class IndexDescWind(BaseLocalizerJob):
+    """
+    Crawler Index data from wind api
+    """
+    codes = {
+        '647006000': [
+            '885000.WI', '885001.WI', '885002.WI', '885003.WI', '885004.WI', '885005.WI', '885006.WI', '885007.WI',
+            '885008.WI', '885009.WI', '885012.WI', '885013.WI', '885054.WI', '885061.WI', '885062.WI', '885063.WI',
+            '885064.WI', '885065.WI', '885066.WI', '885067.WI', '885068.WI', '885069.WI', '885070.WI', '930609.CSI',
+            '930610.CSI', '930890.CSI', '930891.CSI', '930892.CSI', '930893.CSI', '930894.CSI', '930897.CSI',
+            '930898.CSI', '930950.CSI', '930994.CSI', '930995.CSI', '931153.CSI', 'h11021.CSI', 'h11022.CSI',
+            'h11023.CSI', 'h11024.CSI', 'h11025.CSI', 'h11026.CSI', 'h11027.CSI', 'h11028.CSI'],
+        '647007000': [
+            'CBA00301.CS', 'CBA02501.CS', 'CBA03801.CS', 'CBA04201.CS', 'h11001.CSI', 'h11015.CSI', ]
+    }
+
+    def run(self):
+        desc_mp = {
+            'sec_name': 'short_name',
+            'basevalue': 'base_point',
+            'basedate': 'base_date',
+            'methodology': 'weights_rule',
+            'repo_briefing': 'index_intro',
+            'exch_eng': 'market',
+            'launchdate': 'list_date',
+            'delist_date': 'expire_date',
+            'crm_issuer': 'publisher'
+        }
+        price_mp = {
+            'open': 'open_',
+            'high': 'high_',
+            'low': 'low_',
+            'close': 'close_',
+            'volume': 'volume_',
+            'amt': 'amount_',
+            'curr': 'currency'
+        }
+        with get_wind_api() as w:
+            for type_code, idx_codes in self.codes.items():
+                # wss限8000单元格
+                error, desc = w.wss(idx_codes, list(desc_mp.keys()), usedf=True)
+                if error:
+                    self.get_logger().error(error)
+                else:
+                    desc = desc.fillna(np.nan).rename(
+                        columns=lambda x: desc_mp[x.lower()]
+                    ).assign(wind_code=desc.index, index_code=type_code)
+                    for t_col in ('base_date', 'list_date', 'expire_date'):
+                        desc.loc[:, t_col] = pd.to_datetime(desc[t_col])
+                    self.upsert_data(desc, index_org.IndexDescription, index_org.IndexDescription.get_primary_key())
+
+                with self.get_session() as ss:
+                    max_dt = pd.DataFrame(
+                        ss.query(
+                            index_org.IndexEODPrice.wind_code,
+                            sa.func.max(index_org.IndexEODPrice.trade_dt).label('max_dt')
+                        ).group_by(index_org.IndexEODPrice.wind_code).filter(
+                            index_org.IndexEODPrice.wind_code.in_(desc.index)
+                        ).all()
+                    ).set_index('wind_code').reindex(index=desc.index).squeeze()
+                    max_dt = pd.to_datetime(max_dt).fillna(desc['base_date']).loc[lambda ser: ser < self.last_td_date]
+
+                for code, start in max_dt.items():
+                    for dt in pd.date_range(start - pd.Timedelta(days=3), pd.Timestamp.now(), freq='1000D'):
+                        # wsd限8000单元格
+                        error, price = w.wsd(code, list(price_mp.keys()), dt, dt + pd.Timedelta(days=1000), "", usedf=True)
+                        if error:
+                            self.get_logger().error(error)
+                        else:
+                            price = price.rename(
+                                columns=lambda x: price_mp[x.lower()]
+                            ).assign(
+                                wind_code=code, trade_dt=pd.to_datetime(price.index)
+                            ).dropna(subset=['close_']).fillna(np.nan)
+                            self.bulk_insert(price, index_org.IndexEODPrice, msg=f'{code} - {dt:%Y%m%d}')
 
 
 class IndexPriceFromTS(TushareCrawlerJob):
     """
     Crawling index description from tushare
-    http://tushare.xcsc.com:7173/document/2?doc_id=94
+    http://tushare.xcsc.com:7173/document/2?doc_id=95
     """
 
     def run(self, initial=0, *args, **kwargs):
-        pass
+        with self.get_session() as ss:
+            code_list = pd.read_sql(
+                """
+                select
+                    d.wind_code, d.base_date, max(iop.trade_dt) as max_dt
+                from index_org_description d
+                    left join index_org_price iop on d.wind_code = iop.wind_code
+                where localized=1
+                group by d.wind_code
+                """,
+                ss.bind, parse_dates=['base_date', 'max_dt'],
+                index_col=['wind_code']
+            )
+            code_list = code_list.max(axis=1).loc[lambda ser: ser < self.last_td_date]
 
-    def get_eod_data(self, **kwargs):
+        for code, start in code_list.items():
+            try:
+                for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq='3000D'):
+                    self.localized_eod_data(
+                        ts_code=code,
+                        start_date=dt.strftime('%Y%m%d'),
+                        end_date=min((dt + pd.Timedelta(days=2999), self.last_td_date)).strftime('%Y%m%d')
+                    )
+            except Exception as e:
+                self.get_logger().error(repr(e))
+                break
+
+        self.clean_duplicates(
+            index_org.IndexEODPrice,
+            [index_org.IndexEODPrice.wind_code, index_org.IndexEODPrice.trade_dt]
+        )
+
+    def localized_eod_data(self, **kwargs):
         mapping = {
             'ts_code': 'wind_code',
             'trade_date': 'trade_dt',
@@ -109,15 +213,18 @@ class IndexPriceFromTS(TushareCrawlerJob):
             'amount': 'amount_'
         }
         data = self.get_tushare_data(
-            api_name='index_daily', date_cols=['trade_dt'],
+            api_name='index_daily', date_cols=['trade_date'],
             col_mapping=mapping, fields=list(mapping.keys()), **kwargs
         )
-        return data
+        self.bulk_insert(data, index_org.IndexEODPrice)
 
 
 if __name__ == '__main__':
     from paramecium.database import create_all_table
 
     create_all_table()
-    IndexDescFromTS().run()
-    IndexPriceFromTS(env='tushare_prod')
+    # IndexDescFromTS().run(check_price_exist=0)
+    # IndexDescFromTS(env='tushare_dev').run()
+    # IndexDescFromTS(env='tushare_prod').run()
+    IndexDescWind().run()
+    IndexPriceFromTS(env='tushare_prod').run()
