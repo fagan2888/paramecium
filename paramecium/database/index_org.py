@@ -40,5 +40,5 @@ class IndexEODPrice(BaseORM):
     high_ = sa.Column(pg.REAL)  # 最高价(元) high
     low_ = sa.Column(pg.REAL)  # 最低价(元) low
     close_ = sa.Column(pg.REAL)  # 收盘价(元) close
-    volume_ = sa.Column(sa.Integer)  # 成交量(手) volume
+    volume_ = sa.Column(sa.REAL)  # 成交量(手) volume
     amount_ = sa.Column(pg.REAL)  # 成交金额(千元) amount

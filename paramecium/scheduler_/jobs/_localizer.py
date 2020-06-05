@@ -5,7 +5,6 @@
 """
 import logging
 import random
-from functools import lru_cache
 from uuid import uuid4
 
 import numpy as np
@@ -16,8 +15,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Query
 
 from paramecium.database import get_session, get_dates
-from paramecium.utils.data_api import get_tushare_api
 from paramecium.scheduler_.scheduler import job
+from paramecium.utils.data_api import get_tushare_api
 
 
 class BaseLocalizerJob(job.JobBase):
@@ -94,10 +93,10 @@ class BaseLocalizerJob(job.JobBase):
                 session.query(pk, *labeled_cols).join(
                     grouped, sa.and_(*(grouped.c[c.key] == c for c in unique_cols))
                 ).order_by(model.updated_at).all()
-            ).set_index(pk.name)
+            )
             if not duplicates.empty:
                 session.query(model).filter(pk.in_(
-                    duplicates.loc[lambda df: df.duplicated(keep='last')].index.tolist()
+                    duplicates.set_index(pk.name).loc[lambda df: df.duplicated(keep='last')].index.tolist()
                 )).delete(synchronize_session='fetch')
 
     @property
@@ -130,7 +129,7 @@ class TushareCrawlerJob(BaseLocalizerJob):
 
 class WebCrawlerJob(BaseLocalizerJob):
 
-    def request(self, method, url):
+    def request(self, url, method='GET'):
         return request(
             method, url,
             headers={

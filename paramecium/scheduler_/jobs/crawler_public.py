@@ -6,10 +6,12 @@
 import logging
 
 import pandas as pd
+from bs4 import BeautifulSoup
 
 from paramecium.database.trade_calendar import TradeCalendar as CalModel
+from paramecium.database import macro
 from paramecium.utils.date_tool import expand_calendar
-from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob
+from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob, BaseLocalizerJob, WebCrawlerJob
 
 logger = logging.getLogger(__name__)
 
@@ -40,5 +42,30 @@ class CalendarCrawler(TushareCrawlerJob):
         self.upsert_data(records=cal_df.reset_index(), model=CalModel, ukeys=[CalModel.trade_dt])
 
 
+class RateBaselineCrawler(WebCrawlerJob):
+    """
+    基准利率调整
+    http://data.eastmoney.com/cjsj/yhll.html
+    """
+
+    def run(self, *args, **kwargs):
+        respond = self.request('http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
+        if respond.status_code != 200:
+            raise ConnectionError(f"Fail to fetch data for {self.__class__.__name__}")
+
+        bs = BeautifulSoup(respond.text, features="lxml")
+        data = pd.DataFrame(
+            data=([[*pd.to_datetime([v.text for v in bs.find('series').find_all('value')], format='%y-%m-%d')]]
+                  + [[float(v.text) for v in g.find_all('value')] for g in bs.find_all('graph')]),
+            index=['change_dt', 'loan_rate', 'save_rate'],
+        ).T
+        self.upsert_data(data, macro.InterestRate, macro.InterestRate.get_primary_key())
+
+
+
 if __name__ == '__main__':
-    CalendarCrawler().run(1)
+    from paramecium.database import create_all_table
+
+    create_all_table()
+    # CalendarCrawler().run(1)
+    RateBaselineCrawler().run()

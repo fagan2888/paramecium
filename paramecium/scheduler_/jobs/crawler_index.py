@@ -3,9 +3,10 @@
 @Time: 2020/6/4 9:06
 @Author: Sue Zhu
 """
+import numpy as np
 import pandas as pd
 import sqlalchemy as sa
-import numpy as np
+
 from paramecium.database import index_org
 from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob, BaseLocalizerJob
 from paramecium.utils.configuration import get_type_codes
@@ -102,63 +103,70 @@ class IndexDescWind(BaseLocalizerJob):
 
     def run(self):
         desc_mp = {
-            'sec_name': 'short_name',
-            'basevalue': 'base_point',
-            'basedate': 'base_date',
-            'methodology': 'weights_rule',
-            'repo_briefing': 'index_intro',
-            'exch_eng': 'market',
-            'launchdate': 'list_date',
-            'delist_date': 'expire_date',
-            'crm_issuer': 'publisher'
-        }
-        price_mp = {
-            'open': 'open_',
-            'high': 'high_',
-            'low': 'low_',
-            'close': 'close_',
-            'volume': 'volume_',
-            'amt': 'amount_',
-            'curr': 'currency'
+            'SEC_NAME': 'short_name',
+            'BASEVALUE': 'base_point',
+            'BASEDATE': 'base_date',
+            'METHODOLOGY': 'weights_rule',
+            'REPO_BRIEFING': 'index_intro',
+            'EXCH_ENG': 'market',
+            'LAUNCHDATE': 'list_date',
+            'DELIST_DATE': 'expire_date',
+            'CRM_ISSUER': 'publisher'
         }
         with get_wind_api() as w:
             for type_code, idx_codes in self.codes.items():
-                # wss限8000单元格
-                error, desc = w.wss(idx_codes, list(desc_mp.keys()), usedf=True)
+                error, desc = w.wss(idx_codes, list(desc_mp.keys()), usedf=True)  # wss限8000单元格
                 if error:
                     self.get_logger().error(error)
                 else:
-                    desc = desc.fillna(np.nan).rename(
-                        columns=lambda x: desc_mp[x.lower()]
-                    ).assign(wind_code=desc.index, index_code=type_code)
+                    desc = desc.fillna(np.nan).rename(columns=desc_mp).assign(
+                        wind_code=desc.index.map(lambda x: x.replace('H', 'h')),
+                        index_code=type_code
+                    )
                     for t_col in ('base_date', 'list_date', 'expire_date'):
-                        desc.loc[:, t_col] = pd.to_datetime(desc[t_col])
+                        desc.loc[:, t_col] = pd.to_datetime(
+                            desc[t_col].where(lambda ser: ser > '1899-12-30', pd.Timestamp.max)
+                        )
                     self.upsert_data(desc, index_org.IndexDescription, index_org.IndexDescription.get_primary_key())
 
-                with self.get_session() as ss:
-                    max_dt = pd.DataFrame(
-                        ss.query(
-                            index_org.IndexEODPrice.wind_code,
-                            sa.func.max(index_org.IndexEODPrice.trade_dt).label('max_dt')
-                        ).group_by(index_org.IndexEODPrice.wind_code).filter(
-                            index_org.IndexEODPrice.wind_code.in_(desc.index)
-                        ).all()
-                    ).set_index('wind_code').reindex(index=desc.index).squeeze()
-                    max_dt = pd.to_datetime(max_dt).fillna(desc['base_date']).loc[lambda ser: ser < self.last_td_date]
+        self.clean_duplicates(
+            index_org.IndexEODPrice,
+            [index_org.IndexEODPrice.wind_code, index_org.IndexEODPrice.trade_dt]
+        )
 
-                for code, start in max_dt.items():
-                    for dt in pd.date_range(start - pd.Timedelta(days=3), pd.Timestamp.now(), freq='1000D'):
-                        # wsd限8000单元格
-                        error, price = w.wsd(code, list(price_mp.keys()), dt, dt + pd.Timedelta(days=1000), "", usedf=True)
-                        if error:
-                            self.get_logger().error(error)
-                        else:
-                            price = price.rename(
-                                columns=lambda x: price_mp[x.lower()]
-                            ).assign(
-                                wind_code=code, trade_dt=pd.to_datetime(price.index)
-                            ).dropna(subset=['close_']).fillna(np.nan)
-                            self.bulk_insert(price, index_org.IndexEODPrice, msg=f'{code} - {dt:%Y%m%d}')
+    def localized_price_from_wind(self, desc, w_api):
+        price_mp = {
+            'OPEN': 'open_',
+            'HIGH': 'high_',
+            'LOW': 'low_',
+            'CLOSE': 'close_',
+            'VOLUME': 'volume_',
+            'AMT': 'amount_',
+            'CURR': 'currency'
+        }
+        with self.get_session() as ss:
+            max_dt = pd.DataFrame(
+                ss.query(
+                    index_org.IndexEODPrice.wind_code,
+                    sa.func.max(index_org.IndexEODPrice.trade_dt).label('max_dt')
+                ).group_by(index_org.IndexEODPrice.wind_code).filter(
+                    index_org.IndexEODPrice.wind_code.in_(desc.index)
+                ).all(),
+                columns=['wind_code', 'max_dt'],
+            ).set_index('wind_code').reindex(index=desc['wind_code']).squeeze()
+            max_dt = pd.to_datetime(max_dt).fillna(desc['base_date']).loc[lambda ser: ser < self.last_td_date]
+
+        for code, start in max_dt.items():
+            for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq='1000D'):
+                # wsd限8000单元格
+                error, price = w_api.wsd(code, price_mp.keys(), dt, dt + pd.Timedelta(days=1000), "", usedf=True)
+                if error:
+                    self.get_logger().error(error)
+                else:
+                    price = price.rename(columns=price_mp).assign(
+                        wind_code=code, trade_dt=pd.to_datetime(price.index)
+                    ).dropna(subset=['close_']).fillna(np.nan)
+                    self.bulk_insert(price, index_org.IndexEODPrice, msg=f'{code} - {dt:%Y%m%d}')
 
 
 class IndexPriceFromTS(TushareCrawlerJob):
@@ -225,6 +233,7 @@ if __name__ == '__main__':
     create_all_table()
     # IndexDescFromTS().run(check_price_exist=0)
     # IndexDescFromTS(env='tushare_dev').run()
-    # IndexDescFromTS(env='tushare_prod').run()
+    # IndexDescFromTS(env='tushare_prod_old').run()
     IndexDescWind().run()
-    IndexPriceFromTS(env='tushare_prod').run()
+    # IndexPriceFromTS(env='tushare_prod').run()
+    # IndexPriceFromTS(env='tushare_prod_old').run()

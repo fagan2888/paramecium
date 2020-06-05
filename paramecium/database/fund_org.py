@@ -20,22 +20,34 @@ class MutualFundDescription(BaseORM):
     # grad_type = sa.Column(sa.Integer)
     wind_code = sa.Column(sa.String(40), primary_key=True)  # 代码ts_code
     short_name = sa.Column(sa.String(100))  # 证券简称name
+    full_name = sa.Column(sa.String(100))
+    currency = sa.Column(sa.String(10))
     management = sa.Column(sa.String(100))  # 管理人
     custodian = sa.Column(sa.String(100))  # 托管人
+    exchange = sa.Column(sa.String(10))
+
+    is_initial = sa.Column(sa.Integer, index=True)
     invest_type = sa.Column(sa.String(40))  # 投资类型fund_type
-    setup_date = sa.Column(sa.Date, index=True)  # 成立日期found_date
-    maturity_date = sa.Column(sa.Date, index=True)  # 到期日期due_date
-    list_date = sa.Column(sa.Date)  # 上市时间
-    issue_date = sa.Column(sa.Date)  # 发行日期
-    delist_date = sa.Column(sa.Date)  # 退市日期
-    fee_ratio_manage = sa.Column(sa.Float)  # m_fee  # 管理费
-    fee_ratio_custodian = sa.Column(sa.Float)  # c_fee  # 托管费
-    benchmark = sa.Column(sa.String)  # 业绩比较基准
-    status = sa.Column(sa.String(1))  # 存续状态D摘牌 I发行 L已上市
     invest_style = sa.Column(sa.String(40))  # 投资风格invest_type
     fund_type = sa.Column(sa.String(40))  # 基金类型type
+
+    setup_date = sa.Column(sa.Date, index=True)  # 成立日期found_date
+    maturity_date = sa.Column(sa.Date, index=True)  # 到期日期due_date
+    status = sa.Column(sa.String(1))  # 存续状态D摘牌 I发行 L已上市
+    issue_date = sa.Column(sa.Date)  # 发行日期
+    list_date = sa.Column(sa.Date)  # 上市时间
+    delist_date = sa.Column(sa.Date)  # 退市日期
+
+    benchmark = sa.Column(sa.String)  # 业绩比较基准
+    invest_scope = sa.Column(sa.Text)
+    invest_object = sa.Column(sa.Text)
+
+    fee_ratio_manage = sa.Column(sa.Float)  # m_fee  # 管理费
+    fee_ratio_custodian = sa.Column(sa.Float)  # c_fee  # 托管费
+    fee_ratio_sale = sa.Column(sa.Float)
     purchase_start_dt = sa.Column(sa.Date)  # 日常申购起始日
     redemption_start_dt = sa.Column(sa.Date)  # 日常赎回起始日
+    min_purchase_amt = sa.Column(sa.Float)
 
 
 class MutualFundSale(BaseORM):

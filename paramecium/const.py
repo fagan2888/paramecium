@@ -60,3 +60,9 @@ class SectorEnum(CustomEnum):
     MF_YH = '2003'  # 银河基金分类
 
     BOND = '0808'  # 中债分类
+
+
+class WindSector(CustomEnum):
+    """ Wind API wset 板块id """
+
+    WHOLE_MF = '1000008492000000'

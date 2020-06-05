@@ -12,6 +12,7 @@ from requests import request
 from paramecium.database import fund_org, create_all_table
 from paramecium.utils import chunk
 from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob, WebCrawlerJob
+from paramecium.utils.data_api import get_wind_api
 
 
 class FundDescription(TushareCrawlerJob):
@@ -23,6 +24,27 @@ class FundDescription(TushareCrawlerJob):
         {'type': 'int', 'description': '0 or 1 as bool, default `1`'},
     )
     meta_args_example = '[1]'
+    w_info = {
+        'CURR': 'currency',
+        'FUND_PCHREDM_PCHMINAMT': 'min_purchase_amt',
+        'EXCH_ENG': 'exchange',
+        'FUND_INITIAL': 'is_initial',
+        'FUND_INVESTSCOPE': 'invest_scope',
+        'FUND_INVESTOBJECT': 'invest_object',
+        'FUND_SALEFEERATIO': 'fee_ratio_sale',
+        'FUND_FULLNAME': 'full_name'
+    }
+
+    @staticmethod
+    def wind2ts(codes):
+        return codes.str.replace('!', '')
+
+    def get_wind_info(self, funds, w):
+        err, desc = w.wss(funds, [*self.w_info.keys()], usedf=True)
+        if err:
+            self.get_logger().error(f'Wind API has error {err}')
+        else:
+            return desc.rename(columns=self.w_info)
 
     def run(self, pre_truncate=0, *args, **kwargs):
         model = fund_org.MutualFundDescription
@@ -32,34 +54,49 @@ class FundDescription(TushareCrawlerJob):
                 self.get_logger().info(f'truncate table {model.__tablename__:s}.')
                 session.execute(f'truncate table {model.__tablename__:s};')
 
+        with get_wind_api() as w:
+            self.get_logger().info('Getting description from wind')
+            err, w_fund_list = w.wset(
+                "sectorconstituent",
+                f"date={pd.Timestamp.now():%Y-%m-%d};sectorid=1000008492000000;field=wind_code",
+                usedf=True
+            )
+            w_fund_list = w_fund_list.squeeze()
+            w_fund_list.index = self.wind2ts(w_fund_list)
+            wind_desc = pd.concat((self.get_wind_info(funds, w) for funds in chunk(w_fund_list.to_list(), 800)))
+            wind_desc.index = self.wind2ts(wind_desc.index)
+            wind_desc.loc[:, 'is_initial'] = (wind_desc['is_initial'] == '是').astype(int)
+
         self.get_logger().info('Getting description from tushare')
-        fund_info = pd.concat(
-            (self.get_tushare_data(api_name='fund_basic', market=m) for m in list('OE')),
+        ts_desc = pd.concat(
+            (self.get_tushare_data(
+                api_name='fund_basic', market=m,
+                date_cols=['found_date', 'due_date', 'issue_date', 'list_date', 'delist_date',
+                           'purc_startdate', 'redm_startdate'],
+                col_mapping={
+                    'name': 'short_name',
+                    'fund_type': 'invest_type',
+                    'found_date': 'setup_date',
+                    'due_date': 'maturity_date',
+                    'purc_startdate': 'purchase_start_dt',
+                    'redm_startdate': 'redemption_start_dt',
+                    'invest_type': 'invest_style',
+                    'type': 'fund_type',
+                }
+            ) for m in list('OE')),
             axis=0, sort=False
-        ).fillna(np.nan).rename(columns={
-            'ts_code': 'wind_code',
-            'name': 'short_name',
-            'fund_type': 'invest_type',
-            'found_date': 'setup_date',
-            'due_date': 'maturity_date',
-            'purc_startdate': 'purchase_start_dt',
-            'redm_startdate': 'redemption_start_dt',
-            'invest_type': 'invest_style',
-            'type': 'fund_type',
-        }).filter(model.__dict__.keys(), axis=1)
+        ).set_index('ts_code').filter(model.__dict__.keys(), axis=1)
 
-        for c in (
-                'setup_date', 'maturity_date', 'issue_date',
-                'list_date', 'delist_date',
-                'purchase_start_dt', 'redemption_start_dt',
-        ):
-            fund_info.loc[:, c] = pd.to_datetime(fund_info[c])
-
-        fund_info.loc[
+        ts_desc.loc[
             lambda df: df['setup_date'].notnull() & df['maturity_date'].isnull(), 'maturity_date'] = pd.Timestamp.max
 
+        desc = pd.concat((
+            w_fund_list.to_frame('wind_code'),
+            wind_desc,
+            ts_desc
+        ), axis=1).dropna(subset=['wind_code'])
         self.get_logger().info('Saving description into database')
-        self.upsert_data(records=fund_info, model=model, ukeys=[model.wind_code])
+        self.upsert_data(records=desc, model=model, ukeys=[model.wind_code])
 
 
 class FundSales(WebCrawlerJob):
