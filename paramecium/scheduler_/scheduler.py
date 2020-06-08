@@ -10,7 +10,7 @@ os.environ['NDSCHEDULER_SETTINGS_MODULE'] = 'paramecium.scheduler_.settings'
 from ndscheduler.server import server
 from ndscheduler.corescheduler import job
 
-from paramecium.database import create_all_table
+from paramecium.database._postgres import create_all_table
 
 # sometimes the logger would be duplicates, so check and keep only one.
 import logging

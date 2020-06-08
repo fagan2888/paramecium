@@ -8,7 +8,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 from paramecium.const import AssetEnum
-from paramecium.database import get_dates, get_price
+from paramecium.database.comment import get_price
+from paramecium.database._postgres import get_dates
 import abc
 
 

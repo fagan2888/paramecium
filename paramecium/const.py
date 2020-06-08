@@ -65,4 +65,8 @@ class SectorEnum(CustomEnum):
 class WindSector(CustomEnum):
     """ Wind API wset 板块id """
 
-    WHOLE_MF = '1000008492000000'
+    MF = '1000008492000000'
+    MF_GRAD_PAR = '1000006545000000'
+    MF_GRAD_A = '1000006546000000'
+    MF_GRAD_B = '1000006547000000'
+    ETF = 'a201010b00000000'

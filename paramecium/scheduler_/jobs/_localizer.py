@@ -7,21 +7,24 @@ import logging
 import random
 from uuid import uuid4
 
-import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 from requests import request
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Query
 
-from paramecium.database import get_session, get_dates
+from paramecium.database._postgres import get_dates, get_session
+from paramecium.database._tushare import get_tushare_data
 from paramecium.scheduler_.scheduler import job
-from paramecium.utils.data_api import get_tushare_api
 
 
 class BaseLocalizerJob(job.JobBase):
-    # tuple of dict with type and description, both string.
-    # For example: {'type': 'string', 'description': 'name of this channel'}
+    """
+    Base Class for Job
+
+    - meta_args: tuple of dict with type and description, both string.
+        For example: {'type': 'string', 'description': 'name of this channel'}
+    """
     meta_args = None
     meta_args_example = ''  # string, json like
 
@@ -109,22 +112,12 @@ class BaseLocalizerJob(job.JobBase):
 
 class TushareCrawlerJob(BaseLocalizerJob):
 
-    def __init__(self, job_id=None, execution_id=None, env='tushare_prod'):
+    def __init__(self, job_id=None, execution_id=None, env='prod'):
         self.env = env
         super().__init__(job_id, execution_id)
 
     def get_tushare_data(self, api_name, date_cols=None, fields=None, col_mapping=None, **func_kwargs):
-        self.get_logger().debug(f"{api_name} - {func_kwargs}")
-        api = get_tushare_api(self.env)
-        result = api.query(api_name, **func_kwargs, fields=','.join(fields) if fields else '').fillna(np.nan)
-        if date_cols:
-            for c in date_cols:
-                result.loc[:, c] = pd.to_datetime(result[c])
-        # if org_cols:
-        #     result = result.filter(org_cols, axis=1)
-        if col_mapping:
-            result = result.rename(columns=col_mapping)
-        return result
+        return get_tushare_data(api_name, date_cols=None, fields=None, col_mapping=None, env=self.env, **func_kwargs)
 
 
 class WebCrawlerJob(BaseLocalizerJob):

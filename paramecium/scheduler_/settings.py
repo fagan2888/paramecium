@@ -2,7 +2,7 @@
 
 import logging
 
-from paramecium.utils.configuration import get_data_config
+from paramecium.configuration import get_data_config
 
 # Override settings
 DEBUG = True
@@ -16,8 +16,8 @@ logging.getLogger().setLevel(logging.DEBUG)
 JOB_CLASS_PACKAGES = ['scheduler_.jobs']
 
 # Postgres
-DATABASE_CLASS = 'ndscheduler.corescheduler.datastore.providers.postgres.DatastorePostgres'
-_db = get_data_config('postgres')
+DATABASE_CLASS = 'ndscheduler.corescheduler.datastore.providers._postgres.DatastorePostgres'
+_db = get_data_config('_postgres')
 DATABASE_CONFIG_DICT = {
     'user': _db['username'],
     'password': _db['password'],

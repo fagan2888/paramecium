@@ -3,10 +3,13 @@
 @Time: 2020/6/1 12:51
 @Author: Sue Zhu
 """
+import sqlalchemy
+
 from .utils import *
 
 
-class IndexDescription(BaseORM):
+class Description(BaseORM):
+    """ 中国A股指数基本资料 """
     __tablename__ = 'index_org_description'
 
     wind_code = sa.Column(sa.String(40), primary_key=True)  # 代码ts_code
@@ -28,8 +31,8 @@ class IndexDescription(BaseORM):
     localized = sa.Column(sa.Integer, default=0, index=True)
 
 
-class IndexEODPrice(BaseORM):
-    """ 中国A股日行情 """
+class EODPrice(BaseORM):
+    """ A股指数日行情 """
     __tablename__ = 'index_org_price'
 
     oid = gen_oid()
@@ -42,3 +45,21 @@ class IndexEODPrice(BaseORM):
     close_ = sa.Column(pg.REAL)  # 收盘价(元) close
     volume_ = sa.Column(sa.REAL)  # 成交量(手) volume
     amount_ = sa.Column(pg.REAL)  # 成交金额(千元) amount
+
+
+class DerivativeDesc(BaseORM):
+    __tablename__ = 'index_derivative_description'
+
+    benchmark_code = sa.Column(sa.String(40), primary_key=True)
+    benchmark_name = sa.Column(sa.String(40))
+    base_date = sa.Column(sa.Date)
+    base_point = sa.Column(sa.Float)
+
+
+class DerivativePrice(BaseORM):
+    __tablename__ = 'index_derivative_price'
+
+    oid = gen_oid()
+    benchmark_code = sa.Column(sa.String(40), index=True)
+    trade_dt = sa.Column(sa.Date, index=True)
+    close_ = sa.Column(sa.Float)

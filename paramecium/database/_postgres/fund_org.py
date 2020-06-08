@@ -9,15 +9,6 @@ from .utils import *
 class MutualFundDescription(BaseORM):
     __tablename__ = 'mf_org_description'
 
-    # wind_code = sa.Column(sa.String(40), primary_key=True)  # 代码
-    # short_name = sa.Column(sa.String(100))  # 证券简称
-    # full_name = sa.Column(sa.String(100))
-    # setup_date = sa.Column(sa.Date)
-    # maturity_date = sa.Column(sa.Date)
-    # is_index = sa.Column(sa.Integer)
-    # fund_type = sa.Column(sa.String(20))
-    # invest_type = sa.Column(sa.String(40))
-    # grad_type = sa.Column(sa.Integer)
     wind_code = sa.Column(sa.String(40), primary_key=True)  # 代码ts_code
     short_name = sa.Column(sa.String(100))  # 证券简称name
     full_name = sa.Column(sa.String(100))

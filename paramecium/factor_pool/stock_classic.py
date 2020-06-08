@@ -8,11 +8,11 @@ from functools import partial
 import numpy as np
 import pandas as pd
 import sqlalchemy as sa
+
 from paramecium.const import AssetEnum
-from paramecium.database import StockUniverse
+from paramecium.database import stock
 from paramecium.interface import AbstractFactor
-from paramecium.utils.data_api import get_tushare_api
-from paramecium.utils.data_proc import ScaleNormalize, OutlierMAD, ScaleMinMax
+from paramecium.utils.data_proc import OutlierMAD, ScaleMinMax
 
 
 class FamaFrench(AbstractFactor):
@@ -23,7 +23,7 @@ class FamaFrench(AbstractFactor):
     start_date = pd.Timestamp('2003-12-31')
 
     def __init__(self):
-        self.universe = StockUniverse()
+        self.universe = stock.StockUniverse()
         self.value_scale = ScaleMinMax(
             min_func=partial(np.nanpercentile, q=30, axis=0),
             max_func=partial(np.nanpercentile, q=70, axis=0)
@@ -45,22 +45,19 @@ class FamaFrench(AbstractFactor):
         # sector = sector['sector_code'].map(lambda x: x[:4] if x else x).filter(universe, axis=0)
 
         # get derivative data
-        derivative = get_tushare_api().daily_basic(
-            trade_date=f'{dt:%Y%m%d}',
-            fields="ts_code,mv,pe_ttm"
-        ).rename(
-            columns={'ts_code': 'wind_code', 'mv': 'capt'}
-        ).set_index('wind_code').filter(universe, axis=0).dropna()  # .reindex(index=sector.index)
+        derivative = stock.get_derivative_indicator(
+            trade_dt=f'{dt:%Y%m%d}',
+            fields=['mv', 'pe_ttm'],
+        ).rename(columns={'mv': 'capt'}).filter(universe, axis=0).dropna()  # .reindex(index=sector.index)
 
         # size value is log10(mv)
         derivative['size'] = np.log10(derivative['capt'])
         derivative['value'] = 1 / derivative['pe_ttm']
-        for proc in (OutlierMAD(), ):
+        for proc in (OutlierMAD(),):
             derivative.loc[:, ['size', 'value']] = proc.fit_transform(derivative.loc[:, ['size', 'value']].values)
         # derivative = derivative.fillna(derivative.groupby(sector)[['size', 'value']].mean())
 
-        # re scale data to make style identify easier.
-        # use robust scale method and cut point from https://mp.weixin.qq.com/s/2m7JXy2RdbRA1SKgFORgKA
+        # re scale data with robust-scale to make style identify easier
         derivative.loc[:, 'size'] = ScaleMinMax(
             min_func=lambda arr: derivative['size'].sort_values().iloc[-500],
             max_func=lambda arr: derivative['size'].sort_values().iloc[-200]

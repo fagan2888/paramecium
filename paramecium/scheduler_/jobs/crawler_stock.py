@@ -9,8 +9,9 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
+import paramecium.database._postgres
 from paramecium.const import TradeStatus, SectorEnum
-from paramecium.database import stock_org, enum_code, get_dates
+from paramecium.database._postgres import create_all_table, get_dates, stock_org
 from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob
 
 
@@ -209,7 +210,7 @@ class AShareIndustry(TushareCrawlerJob):
 
     @property
     def enum_tb(self):
-        return enum_code.EnumIndustryCode
+        return paramecium.database._postgres.EnumIndustryCode
 
     def run(self, *args, **kwargs):
         for code, data in (self.get_zz_industry()):
@@ -309,8 +310,6 @@ class AShareIndustry(TushareCrawlerJob):
 
 
 if __name__ == '__main__':
-    from paramecium.database import create_all_table
-
     create_all_table()
     AShareDescription().run()
     ASharePrice().run()

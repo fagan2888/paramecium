@@ -9,10 +9,10 @@ import numpy as np
 import pandas as pd
 from requests import request
 
-from paramecium.database import fund_org, create_all_table
+from paramecium.database._postgres import create_all_table, fund_org
 from paramecium.utils import chunk
 from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob, WebCrawlerJob
-from paramecium.utils.data_api import get_wind_api
+from paramecium.backtest import get_wind_api
 
 
 class FundDescription(TushareCrawlerJob):
@@ -31,6 +31,8 @@ class FundDescription(TushareCrawlerJob):
         'FUND_INITIAL': 'is_initial',
         'FUND_INVESTSCOPE': 'invest_scope',
         'FUND_INVESTOBJECT': 'invest_object',
+        'FUND_MANAGEMENTFEERATIO': 'fee_ratio_sale',
+        'FUND_CUSTODIANFEERATIO': 'fee_ratio_sale',
         'FUND_SALEFEERATIO': 'fee_ratio_sale',
         'FUND_FULLNAME': 'full_name'
     }
@@ -82,6 +84,8 @@ class FundDescription(TushareCrawlerJob):
                     'redm_startdate': 'redemption_start_dt',
                     'invest_type': 'invest_style',
                     'type': 'fund_type',
+                    'm_fee': 'fee_ratio_manage',
+                    'c_fee': 'fee_ratio_custodian',
                 }
             ) for m in list('OE')),
             axis=0, sort=False
@@ -94,7 +98,7 @@ class FundDescription(TushareCrawlerJob):
             w_fund_list.to_frame('wind_code'),
             wind_desc,
             ts_desc
-        ), axis=1).dropna(subset=['wind_code'])
+        ), axis=1, sort=False).dropna(subset=['wind_code'])
         self.get_logger().info('Saving description into database')
         self.upsert_data(records=desc, model=model, ukeys=[model.wind_code])
 
