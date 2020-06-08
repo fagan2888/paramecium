@@ -4,6 +4,7 @@
 @Author: Sue Zhu
 """
 import re
+from random import random
 
 import numpy as np
 
@@ -38,3 +39,7 @@ def camel2snake(strings):
 
 def capital_str():
     return (chr(i) for i in range(65, 91))
+
+
+def random_str(lenth):
+    return ''.join(random.sample((chr(i) for i in (*range(65, 91), *range(97, 123))), lenth))

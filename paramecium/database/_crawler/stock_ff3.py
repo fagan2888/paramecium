@@ -9,10 +9,11 @@ import pandas as pd
 import sqlalchemy as sa
 
 from paramecium.const import FreqEnum, AssetEnum
-from paramecium.database._postgres import get_dates, FactorDBTool, index_org
-from paramecium.database.comment import get_price
-from paramecium.factor_pool.stock_classic import FamaFrench
-from paramecium.scheduler_.jobs._localizer import BaseLocalizerJob
+from .._models import index
+from ..factor_io import FactorDBTool
+from ..comment import get_price, get_dates
+from ..scheduler import BaseLocalizerJob
+from ...factor_pool import stock_classic
 
 
 class StockFF3Factor(BaseLocalizerJob):
@@ -26,7 +27,7 @@ class StockFF3Factor(BaseLocalizerJob):
 
     def __init__(self, job_id=None, execution_id=None):
         super().__init__(job_id, execution_id)
-        self.ff3 = FamaFrench()
+        self.ff3 = stock_classic.FamaFrench()
         self.io = FactorDBTool(self.ff3)
         self.codes = [f'{self.prefix}{n}' for n in (*(''.join(m) for m in product('smb', 'gnv')), 'smb', 'hml')]
         self.names = [
@@ -44,9 +45,9 @@ class StockFF3Factor(BaseLocalizerJob):
         with self.get_session() as session:
             self.get_logger().debug('query max date')
             real_start, = session.query(
-                sa.func.max(index_org.DerivativePrice.trade_dt),
+                sa.func.max(index.DerivativePrice.trade_dt),
             ).filter(
-                index_org.DerivativePrice.benchmark_code == self.codes[0]
+                index.DerivativePrice.benchmark_code == self.codes[0]
             ).one()
 
         if real_start is None:
@@ -59,12 +60,12 @@ class StockFF3Factor(BaseLocalizerJob):
                     'base_date': real_start, 'base_point': 1e3,
                     'updated_at': sa.func.current_timestamp()
                 } for c, n in zip(self.codes, self.names)),
-                index_org.DerivativeDesc, ukeys=[index_org.DerivativeDesc.benchmark_code],
+                index.DerivativeDesc, ukeys=[index.DerivativeDesc.benchmark_code],
                 msg='benchmark code into description table'
             )
             self.bulk_insert(
                 ({'benchmark_code': c, 'trade_dt': real_start, 'close_': 1e3} for c in self.codes),
-                index_org.DerivativePrice,
+                index.DerivativePrice,
             )
         else:
             # else table has data, then drop last 7 days data
@@ -74,9 +75,9 @@ class StockFF3Factor(BaseLocalizerJob):
             ))
             self.get_logger().debug(f'`max_dt` is not None, run from {real_start:%Y-%m-%d}.')
             with self.get_session() as session:
-                session.query(index_org.DerivativePrice).filter(
-                    index_org.DerivativePrice.benchmark_code.in_(self.codes),
-                    index_org.DerivativePrice.trade_dt > real_start
+                session.query(index.DerivativePrice).filter(
+                    index.DerivativePrice.benchmark_code.in_(self.codes),
+                    index.DerivativePrice.trade_dt > real_start
                 ).delete(synchronize_session='fetch')
 
         month_end = max((t for t in get_dates(FreqEnum.M) if t <= real_start))
@@ -95,7 +96,7 @@ class StockFF3Factor(BaseLocalizerJob):
             nav = ff3_close.mul(cum_ret.rename(index=lambda k: f'{self.prefix}{k.lower()}').add(1)).round(6)
             self.bulk_insert(
                 records=[{'benchmark_code': k, 'trade_dt': dt, 'close_': v} for k, v in nav.items()],
-                model=index_org.DerivativePrice, msg=f'{dt:%Y-%m-%d}'
+                model=index.DerivativePrice, msg=f'{dt:%Y-%m-%d}'
             )
 
             if dt in get_dates(FreqEnum.M):
@@ -110,10 +111,10 @@ class StockFF3Factor(BaseLocalizerJob):
             cols = ('trade_dt', 'benchmark_code', 'close_')
             ret = pd.DataFrame(
                 ss.query(
-                    *(getattr(index_org.DerivativePrice, c) for c in cols)
+                    *(getattr(index.DerivativePrice, c) for c in cols)
                 ).filter(
-                    index_org.DerivativePrice.benchmark_code.in_(self.codes[:-2]),
-                    index_org.DerivativePrice.trade_dt >= real_start
+                    index.DerivativePrice.benchmark_code.in_(self.codes[:-2]),
+                    index.DerivativePrice.trade_dt >= real_start
                 ).all()
             ).pivot(*cols).rename(index=pd.to_datetime).pct_change(1)
         filter_mean = lambda x: ret.filter(regex=f'{self.prefix}{x}', axis=1).mean(axis=1).fillna(0)
@@ -124,7 +125,7 @@ class StockFF3Factor(BaseLocalizerJob):
         }).add(1).cumprod().mul(self.get_index_close(codes=self.codes[-2:], dt=real_start)).iloc[1:]
         self.bulk_insert(
             records=[{'benchmark_code': c, 'trade_dt': t, 'close_': p} for (t, c), p in combine.stack().items()],
-            model=index_org.DerivativePrice, msg='whole smb and hml'
+            model=index.DerivativePrice, msg='whole smb and hml'
         )
 
     @staticmethod
@@ -136,11 +137,11 @@ class StockFF3Factor(BaseLocalizerJob):
         with self.get_session() as session:
             ff3_close = pd.DataFrame(
                 session.query(
-                    index_org.DerivativePrice.benchmark_code,
-                    index_org.DerivativePrice.close_,
+                    index.DerivativePrice.benchmark_code,
+                    index.DerivativePrice.close_,
                 ).filter(
-                    index_org.DerivativePrice.trade_dt == dt,
-                    index_org.DerivativePrice.benchmark_code.in_(codes),
+                    index.DerivativePrice.trade_dt == dt,
+                    index.DerivativePrice.benchmark_code.in_(codes),
                 ).all(),
                 columns=['benchmark_code', 'close_']
             ).set_index('benchmark_code').squeeze()

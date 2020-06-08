@@ -4,7 +4,7 @@
 @Author: Sue Zhu
 """
 __all__ = [
-    'get_dates', 'get_last_td_date',
+    'get_dates', 'get_last_td',
     'get_risk_free_rates',
     'get_price', 'get_sector'
 ]
@@ -15,8 +15,29 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from ._postgres import get_session, macro, get_table_by_name, get_dates, get_last_td_date
+from ._models import macro, others
+from ._postgres import get_table_by_name, get_session
+from ._tool import flat_1dim
 from ..const import FreqEnum, AssetEnum
+
+
+@lru_cache()
+def get_dates(freq=None):
+    with get_session() as session:
+        query = session.query(others.TradeCalendar.trade_dt)
+        if freq:
+            if isinstance(freq, FreqEnum):
+                freq = freq.name
+            query = query.filter(getattr(others.TradeCalendar, f'is_{freq.lower()}') == 1)
+        data = flat_1dim(query.all())
+    return pd.to_datetime(sorted(data))
+
+
+def get_last_td():
+    cur_date = pd.Timestamp.now()
+    if cur_date.hour <= 22:
+        cur_date -= pd.Timedelta(days=1)
+    return max((t for t in get_dates(freq=FreqEnum.D) if t <= cur_date))
 
 
 @lru_cache()
@@ -68,20 +89,27 @@ def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
     return data
 
 
-def get_sector(asset: AssetEnum, valid_dt=None, sector_type=None):
-    table = get_table_by_name(f'{asset.value}_org_sector')
+def get_sector(asset: AssetEnum, valid_dt, sector_prefix=None):
+    if asset == AssetEnum.STOCK:
+        table = get_table_by_name(f'{asset.value}_org_sector')
+        filters = [
+            valid_dt >= table.c.entry_dt,
+            valid_dt <= table.c.remove_dt
+        ]
+        if sector_prefix:
+            filters.append(sa.func.substr(table.c.sector_code, 1, len(sector_prefix)) == sector_prefix)
+    elif asset == AssetEnum.CMF:
+        # Temporary solution
+        table = get_table_by_name('mf_org_sector_m')
+        filters = [valid_dt == table.c.trade_dt]
+        if sector_prefix:
+            filters.append(table.c.type_sector_prefix)
+    else:
+        raise KeyError(f"Unknown asset type {asset}.")
 
-    filters = []
-    if valid_dt:
-        filters.extend((valid_dt >= table.c.entry_dt, valid_dt <= table.c.remove_dt))
-    if sector_type:
-        start_code = sector_type.value
-        filters.append(
-            sa.func.substr(table.c.sector_code, 1, len(start_code)) == start_code
-        )
     with get_session() as session:
         data = pd.DataFrame(session.query(table).filter(*filters).all()).fillna(np.nan)
-        for t_col in ('entry_dt', 'remove_dt'):
+        for t_col in {'entry_dt', 'remove_dt', 'trade_dt'} & {*data.columns}:
             data.loc[:, t_col] = pd.to_datetime(data[t_col])
         data.drop(['oid', 'updated_at'], axis=1, errors='ignore')
 

@@ -127,7 +127,7 @@ class AShareSector(BaseORM):
     entry_dt = sa.Column(sa.Date)  # 纳入日期 entry_dt
     remove_dt = sa.Column(sa.Date)  # 剔除日期 remove_dt
 
-    u_key = sa.UniqueConstraint(wind_code, sector_code, entry_dt, name=f"uk_{__tablename__}")
+    uk_ = sa.UniqueConstraint(wind_code, sector_code, entry_dt, name=f"uk_{__tablename__}")
 
 
 class ASharePreviousName(BaseORM):

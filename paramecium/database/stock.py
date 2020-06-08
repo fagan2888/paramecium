@@ -7,9 +7,10 @@ from functools import lru_cache
 
 import pandas as pd
 
-from ._postgres import stock_org, get_session
+from ._models import stock_org
+from ._postgres import get_session
 from ._tool import flat_1dim
-from ._tushare import get_tushare_data
+from ._third_party_api import get_tushare_data
 from ..interface import AbstractUniverse
 
 

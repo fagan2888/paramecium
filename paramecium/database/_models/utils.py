@@ -3,18 +3,14 @@
 @Time: 2020/2/22 11:47
 @Author: Sue Zhu
 """
-import logging
-
 import sqlalchemy as sa
 import sqlalchemy.dialects.postgresql as pg
 from sqlalchemy.ext.declarative import declarative_base
 
-logger = logging.getLogger(__name__)
-
 gen_oid = lambda: sa.Column(pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
 
 BaseORM = declarative_base(
-    cls=type('_DabaseMeta', (object,), {
+    cls=type('DBMeta', (object,), {
         'updated_at': sa.Column(
             sa.TIMESTAMP,
             server_default=sa.func.current_timestamp(),

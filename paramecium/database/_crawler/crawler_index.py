@@ -7,9 +7,10 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob, BaseLocalizerJob
-from paramecium.configuration import get_type_codes
-from paramecium.backtest import get_wind_api
+from ._base import TushareCrawlerJob
+from paramecium.database.scheduler import BaseLocalizerJob
+from .._tool import get_type_codes
+from .._third_party_api import get_wind_api
 
 
 class IndexDescFromTS(TushareCrawlerJob):
@@ -50,10 +51,10 @@ class IndexDescFromTS(TushareCrawlerJob):
         )
         data.loc[:, 'index_code'] = data['index_code'].dropna().map(lambda x: f'{x:.0f}')
         data = data.fillna({'index_code': '647000000', 'expire_date': pd.Timestamp.max})
-        self.upsert_data(data, index_org.Description, index_org.Description.get_primary_key(), func_kwargs)
+        self.upsert_data(data, index.Description, index.Description.get_primary_key(), func_kwargs)
 
     def get_price_code(self):
-        model = index_org.Description
+        model = index.Description
         with self.get_session() as ss:
             index_codes = ss.query(model.wind_code).filter(
                 model.expire_date > sa.func.current_date(),
@@ -126,11 +127,11 @@ class IndexDescWind(BaseLocalizerJob):
                         desc.loc[:, t_col] = pd.to_datetime(
                             desc[t_col].where(lambda ser: ser > '1899-12-30', pd.Timestamp.max)
                         )
-                    self.upsert_data(desc, index_org.Description, index_org.Description.get_primary_key())
+                    self.upsert_data(desc, index.Description, index.Description.get_primary_key())
 
         self.clean_duplicates(
-            index_org.EODPrice,
-            [index_org.EODPrice.wind_code, index_org.EODPrice.trade_dt]
+            index.EODPrice,
+            [index.EODPrice.wind_code, index.EODPrice.trade_dt]
         )
 
     def localized_price_from_wind(self, desc, w_api):
@@ -146,10 +147,10 @@ class IndexDescWind(BaseLocalizerJob):
         with self.get_session() as ss:
             max_dt = pd.DataFrame(
                 ss.query(
-                    index_org.EODPrice.wind_code,
-                    sa.func.max(index_org.EODPrice.trade_dt).label('max_dt')
-                ).group_by(index_org.EODPrice.wind_code).filter(
-                    index_org.EODPrice.wind_code.in_(desc.index)
+                    index.EODPrice.wind_code,
+                    sa.func.max(index.EODPrice.trade_dt).label('max_dt')
+                ).group_by(index.EODPrice.wind_code).filter(
+                    index.EODPrice.wind_code.in_(desc.index)
                 ).all(),
                 columns=['wind_code', 'max_dt'],
             ).set_index('wind_code').reindex(index=desc['wind_code']).squeeze()
@@ -165,7 +166,7 @@ class IndexDescWind(BaseLocalizerJob):
                     price = price.rename(columns=price_mp).assign(
                         wind_code=code, trade_dt=pd.to_datetime(price.index)
                     ).dropna(subset=['close_']).fillna(np.nan)
-                    self.bulk_insert(price, index_org.EODPrice, msg=f'{code} - {dt:%Y%m%d}')
+                    self.bulk_insert(price, index.EODPrice, msg=f'{code} - {dt:%Y%m%d}')
 
 
 class IndexPriceFromTS(TushareCrawlerJob):
@@ -203,8 +204,8 @@ class IndexPriceFromTS(TushareCrawlerJob):
                 break
 
         self.clean_duplicates(
-            index_org.EODPrice,
-            [index_org.EODPrice.wind_code, index_org.EODPrice.trade_dt]
+            index.EODPrice,
+            [index.EODPrice.wind_code, index.EODPrice.trade_dt]
         )
 
     def localized_eod_data(self, **kwargs):
@@ -223,11 +224,12 @@ class IndexPriceFromTS(TushareCrawlerJob):
             api_name='index_daily', date_cols=['trade_date'],
             col_mapping=mapping, fields=list(mapping.keys()), **kwargs
         )
-        self.bulk_insert(data, index_org.EODPrice)
+        self.bulk_insert(data, index.EODPrice)
 
 
 if __name__ == '__main__':
-    from paramecium.database._postgres import create_all_table, index_org
+    from paramecium.database._models import index
+    from paramecium.database._postgres import create_all_table
 
     create_all_table()
     IndexDescFromTS().run(check_price_exist=0)

@@ -6,7 +6,7 @@
 from .utils import *
 
 
-class MutualFundDescription(BaseORM):
+class Description(BaseORM):
     __tablename__ = 'mf_org_description'
 
     wind_code = sa.Column(sa.String(40), primary_key=True)  # 代码ts_code
@@ -41,7 +41,7 @@ class MutualFundDescription(BaseORM):
     min_purchase_amt = sa.Column(sa.Float)
 
 
-class MutualFundSale(BaseORM):
+class WebSaleList(BaseORM):
     __tablename__ = 'mf_web_sale'
 
     product_code = sa.Column(sa.String(10), primary_key=True)
@@ -56,7 +56,7 @@ class MutualFundSale(BaseORM):
     purchase_rates_dis = sa.Column(sa.Float)
 
 
-class MutualFundNav(BaseORM):
+class Nav(BaseORM):
     __tablename__ = 'mf_org_nav'
 
     oid = gen_oid()
@@ -71,7 +71,7 @@ class MutualFundNav(BaseORM):
     total_netasset = sa.Column(sa.Float)  # float Y 合计资产净值
 
 
-class MutualFundManager(BaseORM):
+class ManagerHistory(BaseORM):
     __tablename__ = 'mf_org_manager'
 
     oid = gen_oid()
@@ -84,7 +84,7 @@ class MutualFundManager(BaseORM):
     uk = sa.UniqueConstraint(wind_code, manager_name, start_dt)
 
 
-class MutualFundSector(BaseORM):
+class Sector(BaseORM):
     """
     A股板块信息
     - 中证行业成分(2016): http://tushare.xcsc.com:7173/document/2?doc_id=10212
@@ -98,3 +98,29 @@ class MutualFundSector(BaseORM):
     sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code
     entry_dt = sa.Column(sa.Date, index=True)  # 纳入日期 entry_dt
     remove_dt = sa.Column(sa.Date)  # 剔除日期 remove_dt
+
+
+class SectorSnapshot(BaseORM):
+    """
+    基金板块信息（月度截面）
+    """
+    __tablename__ = 'mf_org_sector_m'
+
+    oid = gen_oid()
+    wind_code = sa.Column(sa.String(40), index=True)
+    sector_code = sa.Column(sa.String(40), index=True)
+    trade_dt = sa.Column(sa.Date, index=True)
+    type_ = sa.Column(sa.String(4), index=True)
+
+
+class Connections(BaseORM):
+    """
+    关联基金列表
+    目前主要包含联接基金和分级基金
+    """
+    __tablename__ = 'mf_org_connections'
+
+    oid = gen_oid()
+    connect_type = sa.Column(sa.String(1), index=True)  # 关系代码 {'F':联接基金, 'A':分级A, 'B':分级B}
+    parent_code = sa.Column(sa.String(40), index=True)
+    child_code = sa.Column(sa.String(40))

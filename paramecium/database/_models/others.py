@@ -21,3 +21,10 @@ class TradeCalendar(BaseORM):
     is_y = sa.Column(sa.Integer)
 
 
+class EnumIndustryCode(BaseORM):
+    __tablename__ = 'enum_industry_code'
+
+    code = sa.Column(name='industry_code', type_=sa.String(40), primary_key=True)
+    name = sa.Column(name='industry_name', type_=sa.String(40))
+    level_num = sa.Column(sa.Integer)
+    memo = sa.Column(sa.String)

@@ -9,10 +9,11 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-import paramecium.database._postgres
-from paramecium.const import TradeStatus, SectorEnum
-from paramecium.database._postgres import create_all_table, get_dates, stock_org
-from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob
+from ._base import TushareCrawlerJob
+from .._models import stock_org, others
+from .._postgres import upsert_data, get_session, bulk_insert, clean_duplicates
+from ..comment import get_dates, get_last_td
+from ...const import TradeStatus, SectorEnum
 
 
 class AShareDescription(TushareCrawlerJob):
@@ -20,29 +21,18 @@ class AShareDescription(TushareCrawlerJob):
     Crawling stock description from tushare
     http://tushare.xcsc.com:7173/document/2?doc_id=25
     """
-    _COL = {
-        'ts_code': 'wind_code',
-        'name': 'short_name',
-        'list_date': 'list_dt',
-        'delist_date': 'delist_dt',
-        'crncy_code': 'currency',
-    }
 
-    def run(self, *args, **kwargs):
+    def run(self, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
+        model = stock_org.AShareDescription
         stock_info = pd.concat((
             self.get_tushare_data(
-                api_name='stock_basic', exchange=exchange,
-                fields=[*self._COL.keys(), 'comp_name', 'comp_name_en', 'isin_code', 'exchange', 'list_board',
-                        'pinyin', 'is_shsc', 'comp_code']
+                api_name='stock_basic', exchange=exchange, date_cols=['list_dt', 'delist_dt']
             ) for exchange in ('SSE', 'SZSE')
-        )).rename(columns=self._COL).fillna(np.nan)
-        stock_info.loc[:, 'list_dt'] = pd.to_datetime(stock_info['list_dt'])
-        stock_info.loc[:, 'delist_dt'] = pd.to_datetime(stock_info['delist_dt'])
+        )).filter(model.__dict__.keys(), axis=1)
         stock_info.loc[lambda df: df['list_dt'].notnull() & df['delist_dt'].isnull(), 'delist_dt'] = pd.Timestamp.max
-        stock_info.loc[stock_info['list_dt'].isnull(), 'delist_dt'] = pd.NaT
 
-        model = stock_org.AShareDescription
-        self.upsert_data(records=stock_info, model=model, ukeys=model.get_primary_key())
+        self.insert_data(records=stock_info, model=model, ukeys=model.get_primary_key())
 
 
 class _CrawlerEOD(TushareCrawlerJob):
@@ -55,7 +45,7 @@ class _CrawlerEOD(TushareCrawlerJob):
         return NotImplementedError
 
     def run(self, *args, **kwargs):
-        with self.get_session() as session:
+        with get_session() as session:
             max_dt = pd.to_datetime(session.query(
                 sa.func.max(self.model.trade_dt).label('max_dt')
             ).one()[0]) - pd.Timedelta(days=5)
@@ -63,8 +53,7 @@ class _CrawlerEOD(TushareCrawlerJob):
         if max_dt is pd.NaT:
             max_dt = pd.Timestamp('1990-01-01')
 
-        last_dt = self.last_td_date
-        trade_dates = [i for i in get_dates('D') if max_dt < i <= last_dt]
+        trade_dates = [i for i in get_dates('D') if max_dt < i <= get_last_td()]
         price = pd.DataFrame()
         for i, dt in enumerate(trade_dates):
             try:
@@ -75,10 +64,10 @@ class _CrawlerEOD(TushareCrawlerJob):
                 break
 
             if price.shape[0] > 10000:
-                self.bulk_insert(records=price, model=self.model, msg=f'{i / len(trade_dates) * 100:.2f}%')
+                self.insert_data(records=price, model=self.model, msg=f'{i / len(trade_dates) * 100:.2f}%')
                 price = pd.DataFrame()
 
-        self.bulk_insert(records=price, model=self.model, msg='100%')
+        self.insert_data(records=price, model=self.model, msg='100%')
         self.clean_duplicates(self.model, [self.model.wind_code, self.model.trade_dt])
 
 
@@ -94,79 +83,14 @@ class ASharePrice(_CrawlerEOD):
 
     def get_eod_data(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
-        mapping = {
-            'ts_code': 'wind_code',
-            'trade_date': 'trade_dt',
-            'open': 'open_',
-            'high': 'high_',
-            'low': 'low_',
-            'close': 'close_',
-            'volume': 'volume_',
-            'amount': 'amount_',
-        }
-        price = super().get_tushare_data(
-            api_name='daily',
-            date_cols=['trade_date'], col_mapping=mapping,
-            fields=[*mapping.keys(), 'adj_factor', 'avg_price', 'trade_status'],
-            **func_kwargs
+        price = self.get_tushare_data(
+            api_name='daily', date_cols=['trade_date'],
+            fields=['adj_factor', 'avg_price', 'trade_status'], **func_kwargs
         )
         price.loc[:, 'trade_status'] = price['trade_status'].map({
             **TradeStatus.items(), '停牌': 0, '交易': -1, '待核查': -2,
         }).fillna(-2).astype(int)
         return price
-
-
-class AShareSuspend(TushareCrawlerJob):
-    """
-    Crawling stock suspend info from tushare
-    http://tushare.xcsc.com:7173/document/2?doc_id=31
-    """
-
-    @property
-    def model(self):
-        return stock_org.AShareSuspend
-
-    def get_tushare_data(self, **func_kwargs):
-        data = super().get_tushare_data(
-            api_name='suspend',
-            date_cols=['suspend_date', 'resump_date'],
-            col_mapping={
-                'ts_code': 'wind_code',
-                'resump_date': 'resume_date',
-                'change_reason_type': 'reason_type',
-            },
-            **func_kwargs
-        )
-        data.loc[lambda df: df['suspend_type'].eq(444003000), 'resume_date'] = pd.Timestamp.max
-        return data
-
-    def run(self, *args, **kwargs):
-        with self.get_session() as session:
-            # select stocks still on
-            max_dt = pd.to_datetime(session.query(
-                sa.func.max(self.model.suspend_date).label('max_dt')
-            ).one()[0]) - pd.Timedelta(days=5)
-
-            if max_dt is pd.NaT:
-                # data do not exist, download by stock code
-                stock_list = pd.DataFrame(
-                    session.query(
-                        stock_org.AShareDescription.wind_code,
-                        stock_org.AShareDescription.list_dt,
-                    ).all()
-                ).dropna()
-                query_params = (dict(ts_code=code) for code in stock_list['wind_code'])
-            else:
-                # data exist, download by date
-                query_params = ({key: f'{dt:%Y%m%d}'} for key, dt in product(
-                    ('suspend_date', 'resume_date'),
-                    (i for i in get_dates('D') if max_dt < i <= self.last_td_date)
-                ))
-
-        for q in query_params:
-            self.bulk_insert(records=self.get_tushare_data(**q), model=self.model)
-
-        self.clean_duplicates(self.model, [self.model.suspend_date, self.model.suspend_type, self.model.wind_code])
 
 
 class AShareEODDerivativeIndicator(_CrawlerEOD):
@@ -181,48 +105,73 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
 
     def get_eod_data(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
-
-        mapping = {
-            'ts_code': 'wind_code',
-            'trade_date': 'trade_dt',
-            'tot_shr': 'share_tot',
-            'float_a_shr': 'share_float',
-            'free_shares': 'share_free',
-            'turn': 'turnover',
-            'free_turnover': 'turnover_free',
-            'up_down_limit_status': 'suspend_status',
-            'net_incr_cash_cash_equ_ttm': 'net_increase_cash_equ_ttm',
-            'net_incr_cash_cash_equ_lyr': 'net_increase_cash_equ_lyr',
-        }
         price = super().get_tushare_data(
-            api_name='daily_basic',
-            date_cols=['trade_date'], col_mapping=mapping,
-            fields=[*mapping.keys(), 'pe', 'pb_new', 'pe_ttm', 'pcf_ocf', 'pcf_ocf_ttm', 'pcf_ncf', 'pcf_ncf_ttm',
-                    'ps', 'ps_ttm', 'price_div_dps', 'close', 'adj_high_52w',
-                    'adj_low_52w', 'net_assets', 'net_profit_parent_comp_ttm', 'net_profit_parent_comp_lyr',
-                    'net_cash_flows_oper_act_ttm', 'net_cash_flows_oper_act_lyr', 'oper_rev_ttm', 'oper_rev_lyr'],
-            **func_kwargs
-        )
+            api_name='daily_basic', date_cols=['trade_date'], **func_kwargs
+        ).filter(self.model.__dict__.keys(), axis=1)
         return price
+
+
+class AShareSuspend(TushareCrawlerJob):
+    """
+    Crawling stock suspend info from tushare
+    http://tushare.xcsc.com:7173/document/2?doc_id=31
+    """
+
+    def get_tushare_data(self, **func_kwargs):
+        data = super().get_tushare_data(
+            api_name='suspend', date_cols=['suspend_date', 'resump_date'], **func_kwargs
+        )
+        data.loc[lambda df: df['suspend_type'].eq(444003000), 'resume_date'] = pd.Timestamp.max
+        return data
+
+    def run(self, *args, **kwargs):
+        model = stock_org.AShareSuspend
+
+        with get_session() as session:
+            # select stocks still on
+            max_dt = pd.to_datetime(session.query(
+                sa.func.max(model.suspend_date).label('max_dt')
+            ).one()[0]) - pd.Timedelta(days=5)
+
+            if max_dt is pd.NaT:
+                # data do not exist, download by stock code
+                desc = stock_org.AShareDescription
+                stock_list = pd.DataFrame(session.query(desc.wind_code, desc.list_dt).all()).dropna()
+                query_params = (dict(ts_code=code) for code in stock_list['wind_code'])
+            else:
+                # data exist, download by date
+                query_params = ({key: f'{dt:%Y%m%d}'} for key, dt in product(
+                    ('suspend_date', 'resume_date'),
+                    (i for i in get_dates('D') if max_dt < i <= get_last_td())
+                ))
+
+        for q in query_params:
+            data = self.get_tushare_data(
+                api_name='suspend', date_cols=['suspend_date', 'resump_date'], **q
+            )
+            data.loc[lambda df: df['suspend_type'].eq(444003000), 'resume_date'] = pd.Timestamp.max
+            self.insert_data(records=data, model=model)
+
+        clean_duplicates(model, [model.suspend_date, model.suspend_type, model.wind_code])
 
 
 class AShareIndustry(TushareCrawlerJob):
 
     @property
     def enum_tb(self):
-        return paramecium.database._postgres.EnumIndustryCode
+        return others.EnumIndustryCode
 
     def run(self, *args, **kwargs):
-        for code, data in (self.get_zz_industry()):
-            self.upsert_data(
-                data,
-                model=stock_org.AShareSector,
-                ukeys=stock_org.AShareSector.u_key.columns,
-                msg=code
+        for code, data in (
+                *self.get_zz_industry(),
+        ):
+            self.insert_data(
+                data, msg=code,
+                model=stock_org.AShareSector, ukeys=stock_org.AShareSector.uk_.columns
             )
 
     def get_zz_industry(self):
-        with self.get_session() as session:
+        with get_session() as session:
             industry_codes = session.query(
                 self.enum_tb.code
             ).filter(
@@ -241,7 +190,7 @@ class AShareIndustry(TushareCrawlerJob):
 
     def get_sw_industry(self):
         # TODO: not exist in prod, still have problem in dev server.
-        with self.get_session() as session:
+        with get_session() as session:
             industry_codes = session.query(
                 self.enum_tb.code,
                 self.enum_tb.memo,
@@ -258,7 +207,6 @@ class AShareIndustry(TushareCrawlerJob):
                 fields=['con_ts_code', *dt_cols]
             ).fillna({'remove_dt': pd.Timestamp.max}).assign(sector_code=code)
             yield code, data
-
 
 # class AShareAnnouncement(WebCrawlerJob):
 #     """
@@ -307,12 +255,3 @@ class AShareIndustry(TushareCrawlerJob):
 #             respond = self.request('GET', self.url(var_name, dt))
 #             if respond.status_code == 200:
 #                 respond_data = json.loads(respond.text.replace(f'var {var_name} = ', '', count=1)[:-1])
-
-
-if __name__ == '__main__':
-    create_all_table()
-    AShareDescription().run()
-    ASharePrice().run()
-    AShareEODDerivativeIndicator().run()
-    AShareSuspend().run()
-    AShareIndustry().run()

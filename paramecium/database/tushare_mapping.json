@@ -1,0 +1,56 @@
+{
+  "+++++++++++++++++++++ STOCK +++++++++++++++++++++": "",
+  "stock_basic": {
+    "name": "short_name",
+    "list_date": "list_dt",
+    "delist_date": "delist_dt",
+    "crncy_code": "currency"
+  },
+  "daily": {
+    "trade_date": "trade_dt",
+    "open": "open_",
+    "high": "high_",
+    "low": "low_",
+    "close": "close_",
+    "volume": "volume_",
+    "amount": "amount_"
+  },
+  "suspend": {
+    "resump_date": "resume_date",
+    "change_reason_type": "reason_type"
+  },
+  "daily_basic": {
+    "trade_date": "trade_dt",
+    "tot_shr": "share_tot",
+    "float_a_shr": "share_float",
+    "free_shares": "share_free",
+    "turn": "turnover",
+    "free_turnover": "turnover_free",
+    "up_down_limit_status": "suspend_status",
+    "net_incr_cash_cash_equ_ttm": "net_increase_cash_equ_ttm",
+    "net_incr_cash_cash_equ_lyr": "net_increase_cash_equ_lyr"
+  },
+  "+++++++++++++++++++++ FUND +++++++++++++++++++++": "",
+  "fund_basic": {
+    "name": "short_name",
+    "fund_type": "invest_type",
+    "found_date": "setup_date",
+    "due_date": "maturity_date",
+    "purc_startdate": "purchase_start_dt",
+    "redm_startdate": "redemption_start_dt",
+    "invest_type": "invest_style",
+    "type": "fund_type",
+    "m_fee": "fee_ratio_manage",
+    "c_fee": "fee_ratio_custodian"
+  },
+  "fund_nav": {
+    "end_date": "trade_dt",
+    "accum_nav": "acc_nav"
+  },
+  "fund_manager": {
+    "ann_date": "ann_date",
+    "name": "manager_name",
+    "begin_date": "start_dt",
+    "end_date": "end_dt"
+  }
+}

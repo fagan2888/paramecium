@@ -7,10 +7,14 @@ import logging
 
 import pandas as pd
 from bs4 import BeautifulSoup
+from requests import request
 
-from paramecium.database._postgres.cal_ import TradeCalendar
-from paramecium.scheduler_.jobs._localizer import TushareCrawlerJob, WebCrawlerJob
-from paramecium.utils.date_tool import expand_calendar
+from .._tool import REQUEST_HEADER
+from .._models import others, macro
+from ._base import TushareCrawlerJob
+from ..scheduler import BaseLocalizerJob
+from .._postgres import get_session
+from ...utils.date_tool import expand_calendar
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +30,10 @@ class CalendarCrawler(TushareCrawlerJob):
     meta_args_example = '[1]'
 
     def run(self, pre_truncate=1, *args, **kwargs):
+        model = others.TradeCalendar
         if pre_truncate:
-            name = TradeCalendar.__tablename__
-            with self.get_session() as session:
+            name = model.__tablename__
+            with get_session() as session:
                 self.get_logger().info(f'truncate table {name:s}.')
                 session.execute(f'truncate table {name:s};')
 
@@ -37,18 +42,19 @@ class CalendarCrawler(TushareCrawlerJob):
         cal_df = expand_calendar(pd.to_datetime(dates, format='%Y%m%d'))
         cal_df.index.name = 'trade_dt'
 
-        self.get_logger().info('upsert data')
-        self.upsert_data(records=cal_df.reset_index(), model=TradeCalendar, ukeys=[TradeCalendar.trade_dt])
+        self.insert_data(records=cal_df.reset_index(), model=model, ukeys=model.get_primary_key())
 
 
-class RateBaselineCrawler(WebCrawlerJob):
+class RateBaselineCrawler(BaseLocalizerJob):
     """
     基准利率调整
     http://data.eastmoney.com/cjsj/yhll.html
     """
 
     def run(self, *args, **kwargs):
-        respond = self.request('http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
+        respond = request(
+            method='GET', headers=REQUEST_HEADER,
+            url='http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
         if respond.status_code != 200:
             raise ConnectionError(f"Fail to fetch data for {self.__class__.__name__}")
 
@@ -58,16 +64,8 @@ class RateBaselineCrawler(WebCrawlerJob):
                   + [self.html2list(g) for g in bs.find_all('graph')]),
             index=['change_dt', 'loan_rate', 'save_rate'],
         ).T.astype({'loan_rate': float, 'save_rate': float})
-        self.upsert_data(data, macro.InterestRate, macro.InterestRate.get_primary_key())
+        self.insert_data(data, macro.InterestRate, macro.InterestRate.get_primary_key())
 
     @staticmethod
     def html2list(html_series):
         return [v.text for v in html_series.find_all('value')]
-
-
-if __name__ == '__main__':
-    from paramecium.database._postgres import create_all_table, macro
-
-    create_all_table()
-    # CalendarCrawler().run(1)
-    RateBaselineCrawler().run()

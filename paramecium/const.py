@@ -3,7 +3,7 @@
 @Time: 2020/5/27 16:12
 @Author: Sue Zhu
 """
-__all__ = ['AssetEnum', 'FreqEnum', 'TradeStatus']
+__all__ = ['AssetEnum', 'FreqEnum', 'TradeStatus', 'SectorEnum']
 
 from enum import Enum
 
@@ -70,3 +70,7 @@ class WindSector(CustomEnum):
     MF_GRAD_A = '1000006546000000'
     MF_GRAD_B = '1000006547000000'
     ETF = 'a201010b00000000'
+    MF_FIX_OPEN = "1000007793000000"  # 定期开放
+    MF_TRUST = "1000027426000000"  # 委外
+    MF_INS = "1000031885000000"  # 机构
+    MF_CONVERT = "1000023509000000"  # 可转债
