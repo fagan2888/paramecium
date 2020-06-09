@@ -8,11 +8,12 @@ from itertools import product
 import pandas as pd
 import sqlalchemy as sa
 
-from paramecium.const import FreqEnum, AssetEnum
 from .._models import index
+from .._postgres import get_session
+from ..comment import get_price, get_dates, get_last_td
 from ..factor_io import FactorDBTool
-from ..comment import get_price, get_dates
 from ..scheduler import BaseLocalizerJob
+from ...const import FreqEnum, AssetEnum
 from ...factor_pool import stock_classic
 
 
@@ -40,9 +41,9 @@ class StockFF3Factor(BaseLocalizerJob):
         if start is None:
             start = self.ff3.start_date
         if end is None:
-            end = self.last_td_date
+            end = get_last_td()
 
-        with self.get_session() as session:
+        with get_session() as session:
             self.get_logger().debug('query max date')
             real_start, = session.query(
                 sa.func.max(index.DerivativePrice.trade_dt),
@@ -54,18 +55,18 @@ class StockFF3Factor(BaseLocalizerJob):
             # table is empty, so set first nav as base point.
             real_start = self.ff3.start_date
             self.get_logger().debug('`max_dt` is None, run from start.')
-            self.upsert_data(
-                ({
+            self.insert_data(
+                records=({
                     'benchmark_code': c, 'benchmark_name': n,
                     'base_date': real_start, 'base_point': 1e3,
                     'updated_at': sa.func.current_timestamp()
                 } for c, n in zip(self.codes, self.names)),
-                index.DerivativeDesc, ukeys=[index.DerivativeDesc.benchmark_code],
+                model=index.DerivativeDesc, ukeys=index.DerivativeDesc.get_primary_key(),
                 msg='benchmark code into description table'
             )
-            self.bulk_insert(
-                ({'benchmark_code': c, 'trade_dt': real_start, 'close_': 1e3} for c in self.codes),
-                index.DerivativePrice,
+            self.insert_data(
+                records=({'benchmark_code': c, 'trade_dt': real_start, 'close_': 1e3} for c in self.codes),
+                model=index.DerivativePrice,
             )
         else:
             # else table has data, then drop last 7 days data
@@ -74,7 +75,7 @@ class StockFF3Factor(BaseLocalizerJob):
                 pd.to_datetime(real_start) - pd.Timedelta(days=7)
             ))
             self.get_logger().debug(f'`max_dt` is not None, run from {real_start:%Y-%m-%d}.')
-            with self.get_session() as session:
+            with get_session() as session:
                 session.query(index.DerivativePrice).filter(
                     index.DerivativePrice.benchmark_code.in_(self.codes),
                     index.DerivativePrice.trade_dt > real_start
@@ -94,7 +95,7 @@ class StockFF3Factor(BaseLocalizerJob):
             factor = factor_val.assign(ret=cur_close.div(stock_close) - 1)
             cum_ret = factor.groupby('label').apply(lambda df: df['ret'].dot(df['capt']) / df['capt'].sum())
             nav = ff3_close.mul(cum_ret.rename(index=lambda k: f'{self.prefix}{k.lower()}').add(1)).round(6)
-            self.bulk_insert(
+            self.insert_data(
                 records=[{'benchmark_code': k, 'trade_dt': dt, 'close_': v} for k, v in nav.items()],
                 model=index.DerivativePrice, msg=f'{dt:%Y-%m-%d}'
             )
@@ -107,7 +108,7 @@ class StockFF3Factor(BaseLocalizerJob):
                 stock_close = cur_close.copy()
                 ff3_close = nav.copy()
 
-        with self.get_session() as ss:
+        with get_session() as ss:
             cols = ('trade_dt', 'benchmark_code', 'close_')
             ret = pd.DataFrame(
                 ss.query(
@@ -123,7 +124,7 @@ class StockFF3Factor(BaseLocalizerJob):
             f'{self.prefix}smb': filter_mean('s.') - filter_mean('b.'),
             f'{self.prefix}hml': filter_mean('.v') - filter_mean('.g'),
         }).add(1).cumprod().mul(self.get_index_close(codes=self.codes[-2:], dt=real_start)).iloc[1:]
-        self.bulk_insert(
+        self.insert_data(
             records=[{'benchmark_code': c, 'trade_dt': t, 'close_': p} for (t, c), p in combine.stack().items()],
             model=index.DerivativePrice, msg='whole smb and hml'
         )
@@ -134,7 +135,7 @@ class StockFF3Factor(BaseLocalizerJob):
         return price['close_'].mul(price['adj_factor'])
 
     def get_index_close(self, codes, dt):
-        with self.get_session() as session:
+        with get_session() as session:
             ff3_close = pd.DataFrame(
                 session.query(
                     index.DerivativePrice.benchmark_code,
@@ -146,10 +147,3 @@ class StockFF3Factor(BaseLocalizerJob):
                 columns=['benchmark_code', 'close_']
             ).set_index('benchmark_code').squeeze()
         return ff3_close
-
-
-if __name__ == '__main__':
-    from paramecium.database._postgres import create_all_table
-
-    create_all_table()
-    StockFF3Factor().run(end='2020-05-31')

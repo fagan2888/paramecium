@@ -19,20 +19,22 @@ class FundUniverse(AbstractUniverse):
             self, include_=None,
             # 定期开放,委外,机构,可转债
             exclude_=("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000"),
-            initial_only=True, no_grad=True,
-            open_only=True, issue_month=12, size_=0.5
+            initial_only=True, open_only=True, issue_month=12, size_=0.5
     ):
         self.include = include_
         self.exclude = exclude_
         self.initial_only = initial_only
-        self.no_grad = no_grad
         self.open_only = open_only
         self.issue = issue_month * 30  # simply think there is 30 days each month.
         self.size = size_
 
     @lru_cache(maxsize=2)
     def get_instruments(self, month_end):
-        filters = [fund.Description.setup_date <= month_end - pd.Timedelta(days=self.issue)]
+        filters = [
+            # issue over month
+            fund.Description.setup_date <= month_end - pd.Timedelta(days=self.issue)
+            # not connect fund
+        ]
 
         if self.include:
             asset_type = get_sector(AssetEnum.CMF, valid_dt=month_end, sector_prefix='2001')

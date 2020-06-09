@@ -124,3 +124,5 @@ class Connections(BaseORM):
     connect_type = sa.Column(sa.String(1), index=True)  # 关系代码 {'F':联接基金, 'A':分级A, 'B':分级B}
     parent_code = sa.Column(sa.String(40), index=True)
     child_code = sa.Column(sa.String(40))
+
+    uk = sa.UniqueConstraint(connect_type, parent_code, name=f'uk_mf_connection_codes')

@@ -3,23 +3,22 @@
 @Time: 2020/5/12 20:58
 @Author: Sue Zhu
 """
-from itertools import product
 
 import numpy as np
 from requests import request
 
 from ._base import TushareCrawlerJob
-from ..scheduler import BaseLocalizerJob
 from .._models import fund
 from .._postgres import *
 from .._third_party_api import get_wind_api, WindDataError
 from .._tool import *
 from ..comment import get_dates, get_last_td
+from ..scheduler import BaseLocalizerJob
 from ...const import WindSector, FreqEnum
 from ...utils import chunk
 
 
-class FundDescription(TushareCrawlerJob):
+class Description(TushareCrawlerJob):
     """
     Crawler fund descriptions from tushare
     """
@@ -35,10 +34,10 @@ class FundDescription(TushareCrawlerJob):
         'FUND_INITIAL': 'is_initial',
         'FUND_INVESTSCOPE': 'invest_scope',
         'FUND_INVESTOBJECT': 'invest_object',
-        'FUND_MANAGEMENTFEERATIO': 'fee_ratio_sale',
-        'FUND_CUSTODIANFEERATIO': 'fee_ratio_sale',
         'FUND_SALEFEERATIO': 'fee_ratio_sale',
-        'FUND_FULLNAME': 'full_name'
+        'FUND_FULLNAME': 'full_name',
+        'fund_smftype'.upper(): 'grad_type',
+        'fund_etfwindcode'.upper(): 'etf_code'
     }
 
     @staticmethod
@@ -52,14 +51,8 @@ class FundDescription(TushareCrawlerJob):
         else:
             return desc.rename(columns=self.w_info)
 
-    def run(self, pre_truncate=0, *args, **kwargs):
+    def run(self, *args, **kwargs):
         model = fund.Description
-
-        if pre_truncate:
-            with get_session() as session:
-                sql_sec = f'truncate table {model.__tablename__:s}'
-                self.get_logger().info(sql_sec)
-                session.execute(sql_sec)
 
         self.get_logger().info('Getting description from wind')
         with get_wind_api() as w:
@@ -71,7 +64,34 @@ class FundDescription(TushareCrawlerJob):
             w_fund_list.index = self.wind2ts(w_fund_list)
             wind_desc = pd.concat((self.get_wind_info(funds, w) for funds in chunk(w_fund_list.values, 800)))
             wind_desc.index = self.wind2ts(wind_desc.index)
+
             wind_desc.loc[:, 'is_initial'] = (wind_desc['is_initial'] == '是').astype(int)
+
+            self.get_logger().info('Deal with grad funds.')
+            grad = wind_desc.dropna(subset=['grad_type']).set_index(['full_name', 'grad_type']).unstack()
+            self.insert_data(
+                records=grad.loc[:, ['分级基金母基金', '分级基金优先级']].rename(columns={
+                    '分级基金母基金': 'parent_code', '分级基金优先级': 'child_code'
+                }).assign(connect_type='A'),
+                model=fund.Connections, ukeys=fund.Connections.uk.columns, msg='A'
+            )
+            self.insert_data(
+                records=grad.loc[:, ['分级基金母基金', '分级基金普通级']].rename(columns={
+                    '分级基金母基金': 'parent_code', '分级基金普通级': 'child_code'
+                }).assign(connect_type='B'),
+                model=fund.Connections, ukeys=fund.Connections.uk.columns, msg='B'
+            )
+            # wind think grad A as initial, adjust to parent.
+            wind_desc.loc[wind_desc['wind_code'].isin(grad['分级基金母基金']), 'is_initial'] = True
+            wind_desc.loc[wind_desc['wind_code'].isin(grad['分级基金优先级']), 'is_initial'] = False
+
+            self.get_logger().info('Deal with feeder funds.')
+            self.insert_data(
+                records=wind_desc.dropna(subset=['etf_code']).rename(columns={
+                    'etf_code': 'parent_code', 'wind_code': 'child_code'
+                }).assign(connect_type='F'),
+                model=fund.Connections, ukeys=fund.Connections.uk.columns, msg='F'
+            )
 
         self.get_logger().info('Getting description from tushare')
         ts_desc = pd.concat(
@@ -88,7 +108,7 @@ class FundDescription(TushareCrawlerJob):
 
         desc = pd.concat((
             w_fund_list.to_frame('wind_code'),
-            wind_desc,
+            wind_desc.drop(['grad_type', 'etf_code'], axis=1, errors='ignore'),
             ts_desc
         ), axis=1, sort=False).dropna(subset=['wind_code'])
         self.get_logger().info('Saving description into database')
