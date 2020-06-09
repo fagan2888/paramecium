@@ -4,11 +4,13 @@
 @Author: Sue Zhu
 """
 from functools import lru_cache
+
 import pandas as pd
 
-from .comment import get_sector
 from ._models import fund
-from ..const import AssetEnum
+from ._postgres import get_session
+from .comment import get_sector, get_dates
+from .. import const
 from ..interface import AbstractUniverse
 
 
@@ -26,27 +28,35 @@ class FundUniverse(AbstractUniverse):
         self.initial_only = initial_only
         self.open_only = open_only
         self.issue = issue_month * 30  # simply think there is 30 days each month.
-        self.size = size_
+        self.size = size_  # TODO: size limit has not been apply.
 
     @lru_cache(maxsize=2)
     def get_instruments(self, month_end):
-        filters = [
-            # issue over month
-            fund.Description.setup_date <= month_end - pd.Timedelta(days=self.issue)
-            # not connect fund
-        ]
+        quarter_end = max((t for t in get_dates(const.FreqEnum.Q) if t <= month_end))
+        with get_session() as ss:
+            filters = [
+                # issue over month
+                fund.Description.setup_date <= month_end - pd.Timedelta(days=self.issue),
+                # not connect fund
+                fund.Description.wind_code.notin_(ss.query(fund.Connections.child_code))
+            ]
+            if self.open_only:
+                filters.append(fund.Description.fund_type == '契约型开放式')
+            if self.initial_only:
+                filters.append(fund.Description.is_initial == 1)
 
-        if self.include:
-            asset_type = get_sector(AssetEnum.CMF, valid_dt=month_end, sector_prefix='2001')
-            in_fund = asset_type.loc[lambda df: df['sector_code'].isin(self.include), 'wind_code']
-        if self.exclude:
-            asset_type = get_sector(AssetEnum.CMF, valid_dt=month_end, sector_prefix='1000')
-            ex_fund = asset_type.loc[lambda df: df['sector_code'].isin(self.include), 'wind_code']
+            fund_list = {code for (code,) in ss.query(fund.Description.wind_code).filter(*filters).all()}
 
-        if self.no_grad:
-            filters.append(fund.Description.grad_type < 1)
-        if self.open_only:
-            filters.append(fund.Description.fund_type == '契约型开放式')
+        if self.include or self.exclude:
+            sector_type = pd.concat((
+                get_sector(const.AssetEnum.CMF, valid_dt=month_end, sector_prefix='2001'),
+                get_sector(const.AssetEnum.CMF, valid_dt=quarter_end, sector_prefix='1000'),
+            ))
+            if self.include:
+                in_fund = sector_type.loc[lambda df: df['sector_code'].isin(self.include), 'wind_code']
+                fund_list = fund_list & {*in_fund}
+            if self.exclude:
+                ex_fund = sector_type.loc[lambda df: df['sector_code'].isin(self.exclude), 'wind_code']
+                fund_list = fund_list - {*ex_fund}
 
-        # TODO: Size filter has not apply
-        pass
+        return fund_list

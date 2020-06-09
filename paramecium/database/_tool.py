@@ -39,5 +39,5 @@ def get_tushare_col_mapping(ts_api):
     json_path = Path(__file__).parent.joinpath('tushare_mapping.json')
     with open(json_path, 'r', encoding='utf8') as load_f:
         mapping_dict = json.load(load_f).get(ts_api, {})
-    mapping_dict.set_default('ts_code', 'wind_code')
+    mapping_dict.setdefault('ts_code', 'wind_code')
     return mapping_dict

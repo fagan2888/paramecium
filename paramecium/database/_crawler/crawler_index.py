@@ -7,10 +7,8 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from ._base import TushareCrawlerJob
-from paramecium.database.scheduler import BaseLocalizerJob
+from ._base import *
 from .._tool import get_type_codes
-from .._third_party_api import get_wind_api
 
 
 class IndexDescFromTS(TushareCrawlerJob):

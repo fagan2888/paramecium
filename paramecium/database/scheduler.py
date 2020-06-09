@@ -3,7 +3,8 @@
 Run the scheduler process.
 pip install git+https://github.com/Nextdoor/ndscheduler.git#egg=ndscheduler
 """
-__all__ = ['SimpleServer', 'nd_job']
+__all__ = ['SimpleServer', 'BaseLocalizerJob']
+
 import logging
 import os
 from itertools import groupby
@@ -14,7 +15,7 @@ import pandas as pd
 os.environ['NDSCHEDULER_SETTINGS_MODULE'] = 'paramecium.database.scheduler_config'
 from ndscheduler.server import server
 
-from ndscheduler.corescheduler import job as nd_job, job
+from ndscheduler.corescheduler import job as nd_job
 from paramecium.database._postgres import create_all_table, upsert_data, bulk_insert, clean_duplicates
 
 # sometimes the logger would be duplicates, so check and keep only one.

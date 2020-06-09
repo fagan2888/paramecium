@@ -7,10 +7,10 @@ from functools import lru_cache
 
 import pandas as pd
 
-from ._models import stock_org
+from ._models import stock
 from ._postgres import get_session
-from ._tool import flat_1dim
 from ._third_party_api import get_tushare_data
+from ._tool import flat_1dim
 from ..interface import AbstractUniverse
 
 
@@ -26,24 +26,24 @@ class StockUniverse(AbstractUniverse):
     def get_instruments(self, trade_dt):
         with get_session() as session:
             query_desc = session.query(
-                stock_org.AShareDescription.wind_code,
+                stock.AShareDescription.wind_code,
             ).filter(
-                stock_org.AShareDescription.list_dt < (trade_dt - pd.Timedelta(days=self.issue)),
-                stock_org.AShareDescription.delist_dt > (trade_dt + pd.Timedelta(days=self.delist)),
+                stock.AShareDescription.list_dt < (trade_dt - pd.Timedelta(days=self.issue)),
+                stock.AShareDescription.delist_dt > (trade_dt + pd.Timedelta(days=self.delist)),
             ).all()
             query_trade = session.query(
-                stock_org.AShareEODPrice.wind_code
+                stock.AShareEODPrice.wind_code
             ).filter(
-                stock_org.AShareEODPrice.trade_dt == trade_dt,
-                stock_org.AShareEODPrice.trade_status == 0
+                stock.AShareEODPrice.trade_dt == trade_dt,
+                stock.AShareEODPrice.trade_status == 0
             ).all()
             query_st = pd.DataFrame(
                 session.query(
-                    stock_org.ASharePreviousName.wind_code,
-                    stock_org.ASharePreviousName.new_name
+                    stock.ASharePreviousName.wind_code,
+                    stock.ASharePreviousName.new_name
                 ).filter(
-                    stock_org.ASharePreviousName.entry_dt <= trade_dt,
-                    stock_org.ASharePreviousName.remove_dt >= trade_dt
+                    stock.ASharePreviousName.entry_dt <= trade_dt,
+                    stock.ASharePreviousName.remove_dt >= trade_dt
                 ).all()
             )
             stock_dt = query_st.loc[query_st['new_name'].str.contains(r'ST|PT'), 'wind_code']

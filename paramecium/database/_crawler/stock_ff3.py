@@ -8,12 +8,11 @@ from itertools import product
 import pandas as pd
 import sqlalchemy as sa
 
+from ._base import *
 from .._models import index
-from .._postgres import get_session
 from ..comment import get_price, get_dates, get_last_td
 from ..factor_io import FactorDBTool
-from ..scheduler import BaseLocalizerJob
-from ...const import FreqEnum, AssetEnum
+from ... import const
 from ...factor_pool import stock_classic
 
 
@@ -30,11 +29,8 @@ class StockFF3Factor(BaseLocalizerJob):
         super().__init__(job_id, execution_id)
         self.ff3 = stock_classic.FamaFrench()
         self.io = FactorDBTool(self.ff3)
-        self.codes = [f'{self.prefix}{n}' for n in (*(''.join(m) for m in product('smb', 'gnv')), 'smb', 'hml')]
-        self.names = [
-            *(f'{sn}盘{gn}指数' for sn, gn in product('小中大', ('成长', '平衡', '价值'))),
-            *(f'FamaFrench{name}因子' for name in ('规模', '价值'))
-        ]
+        self.codes = [f'{self.prefix}{n}' for n in (''.join(m) for m in product('smb', 'gnv'))]
+        self.names = [f'{sn}盘{gn}指数' for sn, gn in product('小中大', ('成长', '平衡', '价值'))]
 
     def run(self, start=None, end=None, *args, **kwargs):
         # make sure start is not None
@@ -43,6 +39,7 @@ class StockFF3Factor(BaseLocalizerJob):
         if end is None:
             end = get_last_td()
 
+        # locate real start date
         with get_session() as session:
             self.get_logger().debug('query max date')
             real_start, = session.query(
@@ -50,7 +47,6 @@ class StockFF3Factor(BaseLocalizerJob):
             ).filter(
                 index.DerivativePrice.benchmark_code == self.codes[0]
             ).one()
-
         if real_start is None:
             # table is empty, so set first nav as base point.
             real_start = self.ff3.start_date
@@ -81,14 +77,14 @@ class StockFF3Factor(BaseLocalizerJob):
                     index.DerivativePrice.trade_dt > real_start
                 ).delete(synchronize_session='fetch')
 
-        month_end = max((t for t in get_dates(FreqEnum.M) if t <= real_start))
+        month_end = max((t for t in get_dates(const.FreqEnum.M) if t <= real_start))
         if real_start == month_end:
             self.io.localized_snapshot(month_end, if_exist=1)
         factor_val = self.io.fetch_snapshot(month_end)
         stock_close = self.get_stock_close(month_end)
-        ff3_close = self.get_index_close(self.codes[:-2], month_end)
+        ff3_close = self.get_index_close(self.codes, month_end)
 
-        trade_dates = (t for t in get_dates(FreqEnum.D) if real_start < t <= pd.Timestamp(end))
+        trade_dates = (t for t in get_dates(const.FreqEnum.D) if real_start < t <= pd.Timestamp(end))
         for dt in trade_dates:
             self.get_logger().debug(f'run at {dt:%Y-%m-%d}.')
             cur_close = self.get_stock_close(dt)
@@ -100,7 +96,7 @@ class StockFF3Factor(BaseLocalizerJob):
                 model=index.DerivativePrice, msg=f'{dt:%Y-%m-%d}'
             )
 
-            if dt in get_dates(FreqEnum.M):
+            if dt in get_dates(const.FreqEnum.M):
                 self.get_logger().debug(f'localized factor and close at {dt:%Y-%m-%d}.')
                 month_end = dt
                 self.io.localized_snapshot(dt, if_exist=1)
@@ -108,33 +104,14 @@ class StockFF3Factor(BaseLocalizerJob):
                 stock_close = cur_close.copy()
                 ff3_close = nav.copy()
 
-        with get_session() as ss:
-            cols = ('trade_dt', 'benchmark_code', 'close_')
-            ret = pd.DataFrame(
-                ss.query(
-                    *(getattr(index.DerivativePrice, c) for c in cols)
-                ).filter(
-                    index.DerivativePrice.benchmark_code.in_(self.codes[:-2]),
-                    index.DerivativePrice.trade_dt >= real_start
-                ).all()
-            ).pivot(*cols).rename(index=pd.to_datetime).pct_change(1)
-        filter_mean = lambda x: ret.filter(regex=f'{self.prefix}{x}', axis=1).mean(axis=1).fillna(0)
-
-        combine = pd.DataFrame({
-            f'{self.prefix}smb': filter_mean('s.') - filter_mean('b.'),
-            f'{self.prefix}hml': filter_mean('.v') - filter_mean('.g'),
-        }).add(1).cumprod().mul(self.get_index_close(codes=self.codes[-2:], dt=real_start)).iloc[1:]
-        self.insert_data(
-            records=[{'benchmark_code': c, 'trade_dt': t, 'close_': p} for (t, c), p in combine.stack().items()],
-            model=index.DerivativePrice, msg='whole smb and hml'
-        )
-
     @staticmethod
     def get_stock_close(dt):
-        price = get_price(AssetEnum.STOCK, start=dt, end=dt, fields=['close_', 'adj_factor']).set_index('wind_code')
+        price = get_price(const.AssetEnum.STOCK, start=dt, end=dt, fields=['close_', 'adj_factor']).set_index(
+            'wind_code')
         return price['close_'].mul(price['adj_factor'])
 
-    def get_index_close(self, codes, dt):
+    @staticmethod
+    def get_index_close(codes, dt):
         with get_session() as session:
             ff3_close = pd.DataFrame(
                 session.query(

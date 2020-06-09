@@ -5,15 +5,13 @@
 """
 from itertools import product
 
-import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from ._base import TushareCrawlerJob
-from .._models import stock_org, others
-from .._postgres import upsert_data, get_session, bulk_insert, clean_duplicates
+from ._base import *
+from .._models import stock, others
 from ..comment import get_dates, get_last_td
-from ...const import TradeStatus, SectorEnum
+from ... import const
 
 
 class AShareDescription(TushareCrawlerJob):
@@ -24,7 +22,7 @@ class AShareDescription(TushareCrawlerJob):
 
     def run(self, env='prod', *args, **kwargs):
         super().run(env, *args, **kwargs)
-        model = stock_org.AShareDescription
+        model = stock.AShareDescription
         stock_info = pd.concat((
             self.get_tushare_data(
                 api_name='stock_basic', exchange=exchange, date_cols=['list_dt', 'delist_dt']
@@ -39,7 +37,7 @@ class _CrawlerEOD(TushareCrawlerJob):
 
     @property
     def model(self):
-        return stock_org.AShareEODPrice
+        return stock.AShareEODPrice
 
     def get_eod_data(self, **func_kwargs):
         return NotImplementedError
@@ -79,7 +77,7 @@ class ASharePrice(_CrawlerEOD):
 
     @property
     def model(self):
-        return stock_org.AShareEODPrice
+        return stock.AShareEODPrice
 
     def get_eod_data(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
@@ -88,7 +86,7 @@ class ASharePrice(_CrawlerEOD):
             fields=['adj_factor', 'avg_price', 'trade_status'], **func_kwargs
         )
         price.loc[:, 'trade_status'] = price['trade_status'].map({
-            **TradeStatus.items(), '停牌': 0, '交易': -1, '待核查': -2,
+            **const.TradeStatus.items(), '停牌': 0, '交易': -1, '待核查': -2,
         }).fillna(-2).astype(int)
         return price
 
@@ -101,7 +99,7 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
 
     @property
     def model(self):
-        return stock_org.AShareEODDerivativeIndicator
+        return stock.AShareEODDerivativeIndicator
 
     def get_eod_data(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
@@ -125,7 +123,7 @@ class AShareSuspend(TushareCrawlerJob):
         return data
 
     def run(self, *args, **kwargs):
-        model = stock_org.AShareSuspend
+        model = stock.AShareSuspend
 
         with get_session() as session:
             # select stocks still on
@@ -135,7 +133,7 @@ class AShareSuspend(TushareCrawlerJob):
 
             if max_dt is pd.NaT:
                 # data do not exist, download by stock code
-                desc = stock_org.AShareDescription
+                desc = stock.AShareDescription
                 stock_list = pd.DataFrame(session.query(desc.wind_code, desc.list_dt).all()).dropna()
                 query_params = (dict(ts_code=code) for code in stock_list['wind_code'])
             else:
@@ -167,7 +165,7 @@ class AShareIndustry(TushareCrawlerJob):
         ):
             self.insert_data(
                 data, msg=code,
-                model=stock_org.AShareSector, ukeys=stock_org.AShareSector.uk_.columns
+                model=stock.AShareSector, ukeys=stock.AShareSector.uk_.columns
             )
 
     def get_zz_industry(self):
@@ -176,7 +174,7 @@ class AShareIndustry(TushareCrawlerJob):
                 self.enum_tb.code
             ).filter(
                 self.enum_tb.level_num == 3,
-                sa.func.substr(self.enum_tb.code, 1, 2) == SectorEnum.SEC_ZZ.value
+                sa.func.substr(self.enum_tb.code, 1, 2) == const.SectorEnum.SEC_ZZ.value
             ).all()
 
         for (code,) in industry_codes:
@@ -196,7 +194,7 @@ class AShareIndustry(TushareCrawlerJob):
                 self.enum_tb.memo,
             ).filter(
                 self.enum_tb.level_num == 4,
-                sa.func.substr(self.enum_tb.code, 1, 2) == SectorEnum.SEC_SW.value
+                sa.func.substr(self.enum_tb.code, 1, 2) == const.SectorEnum.SEC_SW.value
             ).all()
 
         for code, idx in industry_codes:

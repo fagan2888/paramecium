@@ -7,22 +7,16 @@ import logging
 
 import pandas as pd
 from bs4 import BeautifulSoup
-from requests import request
 
-from .._tool import REQUEST_HEADER
-from .._models import others, macro
-from ._base import TushareCrawlerJob
-from ..scheduler import BaseLocalizerJob
-from .._postgres import get_session
+from ._base import *
+from .._models import others
 from ...utils.date_tool import expand_calendar
 
 logger = logging.getLogger(__name__)
 
 
 class CalendarCrawler(TushareCrawlerJob):
-    """
-    Crawler trade calendar from tushare
-    """
+    """ Crawler trade calendar from tushare """
     meta_args = (
         # pre_truncate:
         {'type': 'int', 'description': '0 or 1 as bool, default `1`'},
@@ -45,26 +39,21 @@ class CalendarCrawler(TushareCrawlerJob):
         self.insert_data(records=cal_df.reset_index(), model=model, ukeys=model.get_primary_key())
 
 
-class RateBaselineCrawler(BaseLocalizerJob):
+class RateBaselineCrawler(WebCrawlerJob):
     """
     基准利率调整
     http://data.eastmoney.com/cjsj/yhll.html
     """
 
     def run(self, *args, **kwargs):
-        respond = request(
-            method='GET', headers=REQUEST_HEADER,
-            url='http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
-        if respond.status_code != 200:
-            raise ConnectionError(f"Fail to fetch data for {self.__class__.__name__}")
-
+        respond = self.request('http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
         bs = BeautifulSoup(respond.text, features="lxml")
         data = pd.DataFrame(
             data=([[*pd.to_datetime(self.html2list(bs.find('series')), format='%y-%m-%d')]]
                   + [self.html2list(g) for g in bs.find_all('graph')]),
             index=['change_dt', 'loan_rate', 'save_rate'],
         ).T.astype({'loan_rate': float, 'save_rate': float})
-        self.insert_data(data, macro.InterestRate, macro.InterestRate.get_primary_key())
+        self.insert_data(data, others.InterestRate, others.InterestRate.get_primary_key())
 
     @staticmethod
     def html2list(html_series):

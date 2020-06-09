@@ -3,8 +3,6 @@
 @Time: 2020/6/1 12:51
 @Author: Sue Zhu
 """
-import sqlalchemy
-
 from .utils import *
 
 

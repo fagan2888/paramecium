@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from ._models import macro, others
+from ._models import others
 from ._postgres import get_table_by_name, get_session
 from ._tool import flat_1dim
 from ..const import FreqEnum, AssetEnum
@@ -33,6 +33,11 @@ def get_dates(freq=None):
     return pd.to_datetime(sorted(data))
 
 
+def resampler(target_freq):
+    mapper = get_dates(target_freq).to_series().resample('D').bfill()
+    return mapper
+
+
 def get_last_td():
     cur_date = pd.Timestamp.now()
     if cur_date.hour <= 22:
@@ -44,8 +49,8 @@ def get_last_td():
 def get_basic_rates(type_='save'):
     with get_session() as ss:
         query_df = ss.query(
-            macro.InterestRate.change_dt.label('trade_dt'),
-            getattr(macro.InterestRate, type_)
+            others.InterestRate.change_dt.label('trade_dt'),
+            getattr(others.InterestRate, type_)
         ).all()
 
     return {k: v / 100 for k, v in query_df.items()}

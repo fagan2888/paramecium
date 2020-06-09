@@ -3,10 +3,7 @@
 @Time: 2020/5/28 10:54
 @Author: Sue Zhu
 """
-
-import sqlalchemy as sa
-
-from .utils import BaseORM
+from .utils import *
 
 
 class TradeCalendar(BaseORM):
@@ -28,3 +25,12 @@ class EnumIndustryCode(BaseORM):
     name = sa.Column(name='industry_name', type_=sa.String(40))
     level_num = sa.Column(sa.Integer)
     memo = sa.Column(sa.String)
+
+
+class InterestRate(BaseORM):
+    """ 基准利率调整 """
+    __tablename__ = 'macro_interest_rate'
+
+    change_dt = sa.Column(sa.Date, primary_key=True)
+    save_rate = sa.Column(pg.REAL)  # 单位：%
+    loan_rate = sa.Column(pg.REAL)  # 单位：%

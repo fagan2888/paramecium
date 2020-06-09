@@ -3,7 +3,6 @@
 @Time: 2020/6/8 9:54
 @Author: Sue Zhu
 """
-
 import logging
 from contextlib import contextmanager
 
@@ -14,8 +13,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine.url import URL as sa_url
 from sqlalchemy.exc import DataError
 
+from ._models.utils import BaseORM, gen_update, gen_oid
 from ..configuration import get_data_config
-from ._models.utils import BaseORM
 
 logger = logging.getLogger(__name__)
 
@@ -34,27 +33,17 @@ _Session = sa_orm.scoped_session(sa_orm.sessionmaker(
 @contextmanager
 def get_session():
     session = _Session()
-    try:
-        yield session
-        session.commit()
-    except DataError as e:
-        logger.error(f'step into breakpoint for {repr(e)}')
-        breakpoint()
-    except Exception as e:
-        logger.error(f'fail to commit session for {e!r}')
-        session.rollback()
-    finally:
-        session.close()
+    yield session
+    session.close()
 
 
 def create_all_table():
-    from ._models import others, fund, stock_org, index, macro
     logger.info('creating all sqlalchemy data models')
     BaseORM.metadata.create_all(get_sql_engine('postgres'))
 
     # create some view for query.
-    with get_session() as ss:
-        ss.execute(
+    with get_session() as session:
+        session.execute(
             f"""
             create or replace view index_price as
             select wind_code, trade_dt, close_
@@ -64,6 +53,14 @@ def create_all_table():
             from index_derivative_price
             """
         )
+        try:
+            session.commit()
+        except DataError as e:
+            logger.error(f'step into breakpoint for {repr(e)}')
+            breakpoint()
+        except Exception as e:
+            logger.error(f'fail to commit session when create index price view {e!r}')
+            session.rollback()
 
 
 def get_table_by_name(name):
@@ -74,6 +71,15 @@ def bulk_insert(records, model):
     with get_session() as session:
         session.bulk_insert_mappings(model, records)
 
+        try:
+            session.commit()
+        except DataError as e:
+            logger.error(f'step into breakpoint for {repr(e)}')
+            breakpoint()
+        except Exception as e:
+            logger.error(f'fail to commit session when bulk insert data for {model.__tablename__} {e!r}')
+            session.rollback()
+
 
 def upsert_data(records, model, ukeys=None):
     result_ids = []
@@ -83,10 +89,20 @@ def upsert_data(records, model, ukeys=None):
             if ukeys:
                 set_ = {k: sa.text(f'EXCLUDED.{k}') for k in {*record.keys()} - {*(c.key for c in ukeys)}}
                 insert_exe = insert_exe.on_conflict_do_update(
-                    index_elements=ukeys, set_={**set_, 'updated_at': sa.func.current_timestamp()}
+                    index_elements=ukeys,
+                    set_={**set_, 'updated_at': sa.func.current_timestamp()}
                 )
             exe_result = session.execute(insert_exe)
             result_ids.extend(exe_result.inserted_primary_key)
+
+        try:
+            session.commit()
+        except DataError as e:
+            logger.error(f'step into breakpoint for {repr(e)}')
+            breakpoint()
+        except Exception as e:
+            logger.error(f'fail to commit session when upsert data for {model.__tablename__} {e!r}')
+            session.rollback()
 
     return result_ids
 
@@ -107,3 +123,24 @@ def clean_duplicates(model, unique_cols):
             session.query(model).filter(pk.in_(
                 duplicates.set_index(pk.name).loc[lambda df: df.duplicated(keep='last')].index.tolist()
             )).delete(synchronize_session='fetch')
+
+        try:
+            session.commit()
+        except DataError as e:
+            logger.error(f'step into breakpoint for {repr(e)}')
+            breakpoint()
+        except Exception as e:
+            logger.error(f'fail to commit session when clean duplicates for {model.__tablename__} {e!r}')
+            session.rollback()
+
+
+def get_or_create_table(name, *columns, **kwargs):
+    table = sa.Table(
+        name, BaseORM.metadata,
+        gen_oid(), gen_update(), *columns,
+        keep_existing=True, **kwargs
+    )
+    engine = get_sql_engine('postgres', echo=True)
+    if not engine.has_table(name):
+        table.create(bind=engine)
+    return table
