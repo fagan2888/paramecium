@@ -44,12 +44,9 @@ class AbstractFactor(metaclass=abc.ABCMeta):
         return camel2snake(self.__class__.__name__)
 
     @property
+    @abc.abstractmethod
     def field_types(self):
         return dict()
-
-    @abc.abstractmethod
-    def get_empty_table(self):
-        return pd.DataFrame()
 
     @abc.abstractmethod
     def compute(self, dt):

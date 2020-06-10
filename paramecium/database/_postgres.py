@@ -38,6 +38,7 @@ def get_session():
 
 
 def create_all_table():
+    from ._models import index, stock, fund, others
     logger.info('creating all sqlalchemy data models')
     BaseORM.metadata.create_all(get_sql_engine('postgres'))
 
@@ -64,6 +65,8 @@ def create_all_table():
 
 
 def get_table_by_name(name):
+    # from ._models import index, stock, fund, others
+    BaseORM.metadata.reflect(bind=get_sql_engine(env='postgres'),views=True)
     return BaseORM.metadata.tables[name]
 
 

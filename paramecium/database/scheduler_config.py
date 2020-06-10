@@ -5,7 +5,7 @@ import logging
 from paramecium.configuration import get_data_config
 
 # Override settings
-DEBUG = True  # DEBUG = False
+DEBUG = False
 HTTP_PORT = 7777
 HTTP_ADDRESS = '127.0.0.1'
 
@@ -13,7 +13,6 @@ HTTP_ADDRESS = '127.0.0.1'
 logging.getLogger().setLevel(logging.DEBUG)
 
 JOB_CLASS_PACKAGES = ['paramecium.database._crawler']
-
 # Postgres
 DATABASE_CLASS = 'ndscheduler.corescheduler.datastore.providers.postgres.DatastorePostgres'
 _db = get_data_config('postgres')

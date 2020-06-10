@@ -1,0 +1,78 @@
+# -*- coding: utf-8 -*-
+"""
+@Time: 2020/6/9 14:41
+@Author: Sue Zhu
+"""
+import numpy as np
+
+
+def cumulative_returns(returns):
+    return np.nanprod(returns + 1, axis=0) - 1
+
+
+def annual_returns(returns, mul=250):
+    return (1 + cumulative_returns(returns)) ** (returns.shape[0] / mul) - 1
+
+
+def annual_volatility(returns, mul=250):
+    return np.nanstd(returns, ddof=1, axis=0) * np.sqrt(mul)
+
+
+def max_draw_down(returns):
+    cum_nav = np.cumprod(np.nan_to_num(returns) + 1, axis=0)
+    high_water = np.maximum.accumulate(cum_nav, axis=0)
+    draw_down = np.true_divide(cum_nav, high_water) - 1
+    return np.min(draw_down, axis=0)
+
+
+def up_side_risk(returns, rf=0, mul=250):
+    up_side_ret = np.where(returns - rf > 0, returns - rf, 0)
+    return np.nanstd(up_side_ret, ddof=1, axis=0) * np.sqrt(mul)
+
+
+def down_side_risk(returns, rf=0, mul=250):
+    down_side_ret = np.where(returns - rf < 0, returns - rf, 0)
+    return np.nanstd(down_side_ret, ddof=1, axis=0) * np.sqrt(mul)
+
+
+def sharpe_ratio(returns, rf=0, mul=250):
+    return np.nan_to_num(
+        annual_returns(returns - rf, mul) / annual_volatility(returns, mul),
+        nan=np.nan, posinf=np.nan, neginf=np.nan
+    )
+
+
+def sortino_ratio(returns, rf=0, mul=250):
+    return np.nan_to_num(
+        annual_returns(returns - rf, mul) / down_side_risk(returns, rf, mul),
+        nan=np.nan, posinf=np.nan, neginf=np.nan
+    )
+
+
+def calmar_ratio(returns, rf=0, mul=250):
+    return np.nan_to_num(
+        -1 * annual_returns(returns - rf, mul) / max_draw_down(returns),
+        nan=np.nan, posinf=np.nan, neginf=np.nan
+    )
+
+
+def value_at_risk(returns, alpha=0.05):
+    return np.nanpercentile(returns, q=alpha * 100, axis=0)
+
+
+def conditional_var(returns, alpha=0.05):
+    var = value_at_risk(returns, alpha)
+    return np.nanmean(np.where(returns - var < 0, returns, np.nan), axis=0)
+
+
+def regression(returns, factors):
+    cov_inv = np.linalg.pinv(factors.T @ factors)
+    beta = cov_inv @ factors.T @ returns
+    rss = np.sum(np.square(returns - factors @ beta), axis=0, keepdims=True)
+    n, k = factors.shape
+    beta_stand_error = np.sqrt(rss.T @ cov_inv.diagonal().reshape((1, -1)) / (n - k))
+    t_value = np.divide(beta.T, beta_stand_error)
+
+    tss = np.sum(np.square(returns - np.mean(returns, axis=0)), axis=0, keepdims=True)
+    r2_value = 1 - np.divide(rss, tss)
+    return np.hstack([beta.T, t_value, r2_value])

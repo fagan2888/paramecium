@@ -52,5 +52,23 @@
     "name": "manager_name",
     "begin_date": "start_dt",
     "end_date": "end_dt"
+  },
+  "+++++++++++++++++++++ INDEX +++++++++++++++++++++": "",
+  "index_daily": {
+            "trade_date": "trade_dt",
+            "crncy_code": "currency",
+            "open": "open_",
+            "high": "high_",
+            "low": "low_",
+            "close": "close_",
+            "volume": "volume_",
+            "amount": "amount_"
+  },
+  "index_basic": {
+            "name": "short_name",
+            "comp_name": "full_name",
+            "index_base_per": "base_date",
+            "index_base_pt": "base_point",
+            "index_weights_rule": "weights_rule"
   }
 }

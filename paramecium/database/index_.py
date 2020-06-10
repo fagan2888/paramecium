@@ -11,7 +11,7 @@ from .. import const
 
 def _get_index_price(code):
     price = get_price(const.AssetEnum.INDEX, code=code)
-    return price.set_index('trade_dt')['close_']
+    return price.set_index('trade_dt').loc[lambda ser: ~ser.index.duplicated(), 'close_']
 
 
 def _resample_ret(price, freq):
@@ -80,19 +80,19 @@ def calc_timing_factor(code_or_price, method='gii', calc_freq=const.FreqEnum.W):
         raise KeyError(f"Unknown `method` {method}.")
 
 
-def get_fama_french_model(calc_freq=const.FreqEnum.W):
-    price = pd.concat((_get_index_price(f'ff3_{c}{v}') for c, v in zip('SMB', 'GNV')), axis=1)
+def get_index_ff3(calc_freq=const.FreqEnum.W):
+    price = pd.DataFrame({f'{c}{v}': _get_index_price(f'ff3_{c}{v}') for c, v in zip('smb', 'gnv')})
     ret = _resample_ret(price, calc_freq).iloc[1:]
     filter_mean = lambda x: ret.filter(regex=x, axis=1).mean(axis=1)
     factors = pd.DataFrame({
         'market': calc_market_factor(code_or_price='h00985.CSI', calc_freq=calc_freq),
         'smb': filter_mean('s.') - filter_mean('b.'),
         'hml': filter_mean('.v') - filter_mean('.g'),
-    })
+    }).dropna()
     return factors
 
 
-def get_bond_factor_model(calc_freq=const.FreqEnum.W):
+def get_index_bond5(calc_freq=const.FreqEnum.W):
     bond_market = _get_index_price('CBA00301.CS')
     credit_3a = _get_index_price('CBA04201.CS')
     high_yield = _get_index_price('CBA03801.CS')

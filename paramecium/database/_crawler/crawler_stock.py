@@ -42,7 +42,8 @@ class _CrawlerEOD(TushareCrawlerJob):
     def get_eod_data(self, **func_kwargs):
         return NotImplementedError
 
-    def run(self, *args, **kwargs):
+    def run(self, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
         with get_session() as session:
             max_dt = pd.to_datetime(session.query(
                 sa.func.max(self.model.trade_dt).label('max_dt')
@@ -122,7 +123,8 @@ class AShareSuspend(TushareCrawlerJob):
         data.loc[lambda df: df['suspend_type'].eq(444003000), 'resume_date'] = pd.Timestamp.max
         return data
 
-    def run(self, *args, **kwargs):
+    def run(self, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
         model = stock.AShareSuspend
 
         with get_session() as session:
@@ -159,7 +161,8 @@ class AShareIndustry(TushareCrawlerJob):
     def enum_tb(self):
         return others.EnumIndustryCode
 
-    def run(self, *args, **kwargs):
+    def run(self, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
         for code, data in (
                 *self.get_zz_industry(),
         ):

@@ -6,7 +6,7 @@
 __all__ = [
     'BaseLocalizerJob', 'TushareCrawlerJob', 'WebCrawlerJob',
     'get_wind_api', 'WindDataError',
-    'get_session', 'clean_duplicates'
+    'get_session', 'clean_duplicates',
 ]
 
 from requests import request

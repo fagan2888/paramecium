@@ -23,7 +23,8 @@ class CalendarCrawler(TushareCrawlerJob):
     )
     meta_args_example = '[1]'
 
-    def run(self, pre_truncate=1, *args, **kwargs):
+    def run(self, pre_truncate=1, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
         model = others.TradeCalendar
         if pre_truncate:
             name = model.__tablename__

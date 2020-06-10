@@ -7,7 +7,7 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
-import sqlalchemy as sa
+import sqlalchemy.types as tp
 
 from paramecium.const import AssetEnum
 from paramecium.database import stock
@@ -31,12 +31,7 @@ class FamaFrench(AbstractFactor):
 
     @property
     def field_types(self):
-        return dict(label=sa.String(2), **super().field_types)
-
-    def get_empty_table(self):
-        return pd.DataFrame(
-            np.nan, columns=['size', 'value', 'capt'], index=[]
-        ).assign(wind_code='', trade_dt=pd.Timestamp.now(), label='')
+        return dict(size=float, value=float, capt=float, label=str)
 
     def compute(self, dt):
         # stock match case
@@ -69,4 +64,4 @@ class FamaFrench(AbstractFactor):
             pd.cut(derivative['value'], bins=[-np.inf, -100, 100, np.inf], labels=list('GNV'))
         )
 
-        return derivative.filter(self.get_empty_table().columns, axis=1)
+        return derivative.filter(self.field_types.keys(), axis=1)

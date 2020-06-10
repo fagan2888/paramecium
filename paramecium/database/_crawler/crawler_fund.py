@@ -15,7 +15,7 @@ from ..comment import get_dates, get_last_td
 from ... import const, utils
 
 
-class Description(TushareCrawlerJob):
+class FundDescription(TushareCrawlerJob):
     """
     Crawler fund descriptions from tushare
     """
@@ -43,7 +43,8 @@ class Description(TushareCrawlerJob):
         else:
             return desc.rename(columns=self.w_info)
 
-    def run(self, *args, **kwargs):
+    def run(self, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
         model = fund.Description
 
         self.get_logger().info('Getting description from wind')
@@ -104,6 +105,7 @@ class Description(TushareCrawlerJob):
         self.insert_data(records=desc, model=model, ukeys=[model.wind_code])
 
 
+
 class FundSales(WebCrawlerJob):
     meta_args = (
         # n_records
@@ -140,7 +142,8 @@ class FundNav(TushareCrawlerJob):
     use `try-except` to get most.
     """
 
-    def run(self, *args, **kwargs):
+    def run(self, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
         self.get_logger().info('query exist nav data to get query range')
         with get_session() as session:
             max_dts = pd.read_sql(
@@ -197,7 +200,8 @@ class FundManager(TushareCrawlerJob):
     Crawler fund net asset values from tushare
     """
 
-    def run(self, *args, **kwargs):
+    def run(self, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
         model = fund.ManagerHistory
 
         with get_session() as session:

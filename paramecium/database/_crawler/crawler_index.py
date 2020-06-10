@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
+from .._models import index
+from ..comment import get_last_td
 from ._base import *
 from .._tool import get_type_codes
 
@@ -17,7 +19,8 @@ class IndexDescFromTS(TushareCrawlerJob):
     http://tushare.xcsc.com:7173/document/2?doc_id=94
     """
 
-    def run(self, check_price_exist=1, *args, **kwargs):
+    def run(self, check_price_exist=1, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
         types = get_type_codes('index_org_description')
 
         types['publisher'].pop('WIND')
@@ -31,29 +34,20 @@ class IndexDescFromTS(TushareCrawlerJob):
             self.get_price_code()
 
     def get_and_insert_data(self, **func_kwargs):
-        col_map = {
-            'ts_code': 'wind_code',
-            'name': 'short_name',
-            'comp_name': 'full_name',
-            'index_base_per': 'base_date',
-            'index_base_pt': 'base_point',
-            'index_weights_rule': 'weights_rule'
-        }
         data = self.get_tushare_data(
             api_name='index_basic',
             date_cols=['index_base_per', 'list_date', 'expire_date'],
-            fields=[*col_map.keys(), 'market', 'list_date', 'index_code', 'publisher', 'index_style',
+            fields=['market', 'list_date', 'index_code', 'publisher', 'index_style',
                     'index_intro', 'weight_type', 'expire_date', 'income_processing_method', 'change_history'],
-            col_mapping=col_map,
             **func_kwargs
         )
         data.loc[:, 'index_code'] = data['index_code'].dropna().map(lambda x: f'{x:.0f}')
         data = data.fillna({'index_code': '647000000', 'expire_date': pd.Timestamp.max})
-        self.upsert_data(data, index.Description, index.Description.get_primary_key(), func_kwargs)
+        self.insert_data(data, index.Description, index.Description.get_primary_key(), func_kwargs)
 
     def get_price_code(self):
         model = index.Description
-        with self.get_session() as ss:
+        with get_session() as ss:
             index_codes = ss.query(model.wind_code).filter(
                 model.expire_date > sa.func.current_date(),
                 model.index_code.in_([
@@ -125,7 +119,9 @@ class IndexDescWind(BaseLocalizerJob):
                         desc.loc[:, t_col] = pd.to_datetime(
                             desc[t_col].where(lambda ser: ser > '1899-12-30', pd.Timestamp.max)
                         )
-                    self.upsert_data(desc, index.Description, index.Description.get_primary_key())
+                    self.insert_data(records=desc, model=index.Description, ukeys=index.Description.get_primary_key())
+
+                self.localized_price_from_wind(desc, w)
 
         self.clean_duplicates(
             index.EODPrice,
@@ -142,29 +138,33 @@ class IndexDescWind(BaseLocalizerJob):
             'AMT': 'amount_',
             'CURR': 'currency'
         }
-        with self.get_session() as ss:
-            max_dt = pd.DataFrame(
-                ss.query(
-                    index.EODPrice.wind_code,
-                    sa.func.max(index.EODPrice.trade_dt).label('max_dt')
-                ).group_by(index.EODPrice.wind_code).filter(
-                    index.EODPrice.wind_code.in_(desc.index)
-                ).all(),
-                columns=['wind_code', 'max_dt'],
-            ).set_index('wind_code').reindex(index=desc['wind_code']).squeeze()
-            max_dt = pd.to_datetime(max_dt).fillna(desc['base_date']).loc[lambda ser: ser < self.last_td_date]
+        with get_session() as ss:
+            desc_loc = desc.set_index('wind_code').assign(
+                max_price=pd.to_datetime(
+                    pd.DataFrame(
+                        ss.query(
+                            index.EODPrice.wind_code,
+                            sa.func.max(index.EODPrice.trade_dt).label('max_dt')
+                        ).group_by(index.EODPrice.wind_code).filter(
+                            index.EODPrice.wind_code.in_(desc['wind_code'])
+                        ).all(),
+                        columns=['wind_code', 'max_dt'],
+                    ).set_index('wind_code').squeeze()
+                )
+            )
+            max_dt = desc_loc.loc[:, ['base_date', 'max_price']].max(axis=1).loc[lambda ser: ser < get_last_td()]
 
         for code, start in max_dt.items():
             for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq='1000D'):
                 # wsd限8000单元格
-                error, price = w_api.wsd(code, price_mp.keys(), dt, dt + pd.Timedelta(days=1000), "", usedf=True)
+                error, price = w_api.wsd(code, [*price_mp.keys()], dt, dt + pd.Timedelta(days=1000), "", usedf=True)
                 if error:
                     self.get_logger().error(error)
                 else:
                     price = price.rename(columns=price_mp).assign(
                         wind_code=code, trade_dt=pd.to_datetime(price.index)
                     ).dropna(subset=['close_']).fillna(np.nan)
-                    self.bulk_insert(price, index.EODPrice, msg=f'{code} - {dt:%Y%m%d}')
+                    self.insert_data(price, index.EODPrice, msg=f'{code} - {dt:%Y%m%d}')
 
 
 class IndexPriceFromTS(TushareCrawlerJob):
@@ -173,8 +173,9 @@ class IndexPriceFromTS(TushareCrawlerJob):
     http://tushare.xcsc.com:7173/document/2?doc_id=95
     """
 
-    def run(self, initial=0, *args, **kwargs):
-        with self.get_session() as ss:
+    def run(self, env='prod', *args, **kwargs):
+        super().run(env, *args, **kwargs)
+        with get_session() as ss:
             code_list = pd.read_sql(
                 """
                 select
@@ -187,15 +188,14 @@ class IndexPriceFromTS(TushareCrawlerJob):
                 ss.bind, parse_dates=['base_date', 'max_dt'],
                 index_col=['wind_code']
             )
-            code_list = code_list.max(axis=1).loc[lambda ser: ser < self.last_td_date]
+            code_list = code_list.max(axis=1).loc[lambda ser: ser < get_last_td()]
 
         for code, start in code_list.items():
             try:
                 for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq='3000D'):
                     self.localized_eod_data(
-                        ts_code=code,
-                        start_date=dt.strftime('%Y%m%d'),
-                        end_date=min((dt + pd.Timedelta(days=2999), self.last_td_date)).strftime('%Y%m%d')
+                        ts_code=code, start_date=dt.strftime('%Y%m%d'),
+                        end_date=min((dt + pd.Timedelta(days=2999), get_last_td())).strftime('%Y%m%d')
                     )
             except Exception as e:
                 self.get_logger().error(repr(e))
@@ -207,32 +207,7 @@ class IndexPriceFromTS(TushareCrawlerJob):
         )
 
     def localized_eod_data(self, **kwargs):
-        mapping = {
-            'ts_code': 'wind_code',
-            'trade_date': 'trade_dt',
-            'crncy_code': 'currency',
-            'open': 'open_',
-            'high': 'high_',
-            'low': 'low_',
-            'close': 'close_',
-            'volume': 'volume_',
-            'amount': 'amount_'
-        }
         data = self.get_tushare_data(
-            api_name='index_daily', date_cols=['trade_date'],
-            col_mapping=mapping, fields=list(mapping.keys()), **kwargs
-        )
-        self.bulk_insert(data, index.EODPrice)
-
-
-if __name__ == '__main__':
-    from paramecium.database._models import index
-    from paramecium.database._postgres import create_all_table
-
-    create_all_table()
-    IndexDescFromTS().run(check_price_exist=0)
-    IndexDescFromTS(env='tushare_dev').run()
-    IndexDescFromTS(env='tushare_prod_old').run()
-    IndexDescWind().run()
-    IndexPriceFromTS(env='tushare_prod').run()
-    IndexPriceFromTS(env='tushare_prod_old').run()
+            api_name='index_daily', date_cols=['trade_date'], **kwargs
+        ).filter(index.EODPrice.__dict__.keys(), axis=1)
+        self.insert_data(records=data, model=index.EODPrice)

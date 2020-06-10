@@ -32,22 +32,33 @@ class FactorDBTool(AbstractFactorIO):
         """
         # check if data exist
         with get_session() as session:
-            query = session.query(self.table).filter(self.table.c.trade_dt == dt)
+            filters = [self.table.c.trade_dt == dt]
             if if_exist == 1:
-                query.delete(synchronize_session='fetch')
-            else:
-                if query.first():
-                    msg = f"factor data at {dt:%Y-%m-%d} is exist, please turn into replace mode or check your code!"
-                    raise KeyError(msg)
+                res = session.execute(sa.delete(self.table).where(*filters))
+                try:
+                    session.commit()
+                    if res.rowcount:
+                        self.logger.info(f'delete {res.rowcount} from {self.table_name}')
+                except DataError as e:
+                    logger.error(f'step into breakpoint for {repr(e)}')
+                    breakpoint()
+                except Exception as e:
+                    logger.error(f'fail to commit session when create index price view {e!r}')
+                    session.rollback()
+            elif session.query(self.table).filter(*filters).first():
+                msg = f"factor data at {dt:%Y-%m-%d} is exist, please turn into replace mode or check your code!"
+                raise KeyError(msg)
 
         self.logger.debug(f'compute factor at {dt:%Y-%m-%d}')
         snapshot = self._factor.compute(dt)
         if snapshot.empty:
             self.logger.warning(f'empty data at {dt:%Y-%m-%d} need to be check!')
         else:
-            snapshot.index.name = 'wind_code'
+            # snapshot.index.name = 'wind_code'
             snapshot.assign(trade_dt=dt).to_sql(
-                name=self.table_name, con=get_sql_engine('postgres'), method='multi', if_exists='append'
+                name=self.table_name, con=get_sql_engine('postgres'),
+                index_label='wind_code',
+                method='multi', if_exists='append'
             )
 
     def fetch_snapshot(self, dt):

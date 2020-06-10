@@ -29,10 +29,6 @@ class SimpleServer(server.SchedulerServer):
         create_all_table()
 
 
-if __name__ == "__main__":
-    SimpleServer.run()
-
-
 class BaseLocalizerJob(nd_job.JobBase):
     """
     Base Class for Job
@@ -83,3 +79,7 @@ class BaseLocalizerJob(nd_job.JobBase):
     def clean_duplicates(self, model, unique_cols):
         self.get_logger().debug(f'Clean duplicate data after bulk insert.')
         return clean_duplicates(model, unique_cols)
+
+
+if __name__ == "__main__":
+    SimpleServer.run()
