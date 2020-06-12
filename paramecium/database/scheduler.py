@@ -3,7 +3,7 @@
 Run the scheduler process.
 pip install git+https://github.com/Nextdoor/ndscheduler.git#egg=ndscheduler
 """
-__all__ = ['SimpleServer', 'BaseLocalizerJob']
+__all__ = ['SimpleServer', 'BaseJob']
 
 import logging
 import os
@@ -13,9 +13,10 @@ from uuid import uuid4
 import pandas as pd
 
 os.environ['NDSCHEDULER_SETTINGS_MODULE'] = 'paramecium.database.scheduler_config'
-from ndscheduler.server import server
 
+from ndscheduler.server import server as nd_server
 from ndscheduler.corescheduler import job as nd_job
+
 from paramecium.database._postgres import create_all_table, upsert_data, bulk_insert, clean_duplicates
 
 # sometimes the logger would be duplicates, so check and keep only one.
@@ -23,13 +24,13 @@ logger = logging.getLogger()
 logger.handlers = [list(g)[0] for _, g in groupby(logger.handlers, lambda x: x.__class__)]
 
 
-class SimpleServer(server.SchedulerServer):
+class SimpleServer(nd_server.SchedulerServer):
 
     def post_scheduler_start(self):
         create_all_table()
 
 
-class BaseLocalizerJob(nd_job.JobBase):
+class BaseJob(nd_job.JobBase):
     """
     Base Class for Job
 
@@ -62,8 +63,7 @@ class BaseLocalizerJob(nd_job.JobBase):
 
     @classmethod
     def get_logger(cls):
-        logger = logging.getLogger(cls.get_model_name())
-        return logger
+        return logging.getLogger(cls.get_model_name())
 
     def insert_data(self, records, model, ukeys=None, msg=''):
         if isinstance(records, pd.DataFrame):
@@ -79,7 +79,3 @@ class BaseLocalizerJob(nd_job.JobBase):
     def clean_duplicates(self, model, unique_cols):
         self.get_logger().debug(f'Clean duplicate data after bulk insert.')
         return clean_duplicates(model, unique_cols)
-
-
-if __name__ == "__main__":
-    SimpleServer.run()

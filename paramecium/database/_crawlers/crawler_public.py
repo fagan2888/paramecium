@@ -8,14 +8,15 @@ import logging
 import pandas as pd
 from bs4 import BeautifulSoup
 
-from ._base import *
-from .._models import others
+from .._postgres import get_session
+from ..pg_models import others
 from ...utils.date_tool import expand_calendar
+from ._base import CrawlerJob
 
 logger = logging.getLogger(__name__)
 
 
-class CalendarCrawler(TushareCrawlerJob):
+class CalendarCrawler(CrawlerJob):
     """ Crawler trade calendar from tushare """
     meta_args = (
         # pre_truncate:
@@ -40,14 +41,14 @@ class CalendarCrawler(TushareCrawlerJob):
         self.insert_data(records=cal_df.reset_index(), model=model, ukeys=model.get_primary_key())
 
 
-class RateBaselineCrawler(WebCrawlerJob):
+class RateBaselineCrawler(CrawlerJob):
     """
     基准利率调整
     http://data.eastmoney.com/cjsj/yhll.html
     """
 
     def run(self, *args, **kwargs):
-        respond = self.request('http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
+        respond = self.request_from_web('http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
         bs = BeautifulSoup(respond.text, features="lxml")
         data = pd.DataFrame(
             data=([[*pd.to_datetime(self.html2list(bs.find('series')), format='%y-%m-%d')]]

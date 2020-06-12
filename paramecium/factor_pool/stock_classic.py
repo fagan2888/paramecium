@@ -7,7 +7,6 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
-import sqlalchemy.types as tp
 
 from paramecium.const import AssetEnum
 from paramecium.database import stock
@@ -43,7 +42,9 @@ class FamaFrench(AbstractFactor):
         derivative = stock.get_derivative_indicator(
             trade_dt=f'{dt:%Y%m%d}',
             fields=['mv', 'pe_ttm'],
-        ).rename(columns={'mv': 'capt'}).filter(universe, axis=0).dropna()  # .reindex(index=sector.index)
+        ).rename(columns={'mv': 'capt'}).filter(universe, axis=0).fillna({
+            'pe_ttm': 0
+        }).dropna()  # .reindex(index=sector.index)
 
         # size value is log10(mv)
         derivative['size'] = np.log10(derivative['capt'])

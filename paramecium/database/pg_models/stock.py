@@ -10,7 +10,9 @@ codes = tb.apply(lambda ser: f"{ser['名称']} = sa.Column(sa.String())  # {ser[
 codes.to_clipboard(index=False)
 
 """
-from .utils import *
+import sqlalchemy as sa
+
+from .._postgres import gen_oid, BaseORM
 
 
 class AShareDescription(BaseORM):
@@ -41,14 +43,14 @@ class AShareEODPrice(BaseORM):
     oid = gen_oid()
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
-    open_ = sa.Column(pg.REAL)  # 开盘价(元) open
-    high_ = sa.Column(pg.REAL)  # 最高价(元) high
-    low_ = sa.Column(pg.REAL)  # 最低价(元) low
-    close_ = sa.Column(pg.REAL)  # 收盘价(元) close
+    open_ = sa.Column(sa.Float)  # 开盘价(元) open
+    high_ = sa.Column(sa.Float)  # 最高价(元) high
+    low_ = sa.Column(sa.Float)  # 最低价(元) low
+    close_ = sa.Column(sa.Float)  # 收盘价(元) close
     volume_ = sa.Column(sa.Integer)  # 成交量(手) volume
-    amount_ = sa.Column(pg.REAL)  # 成交金额(千元) amount
-    adj_factor = sa.Column(pg.REAL)  # 复权因子
-    avg_price = sa.Column(pg.REAL)  # 均价(VWAP)
+    amount_ = sa.Column(sa.Float)  # 成交金额(千元) amount
+    adj_factor = sa.Column(sa.Float)  # 复权因子
+    avg_price = sa.Column(sa.Float)  # 均价(VWAP)
     trade_status = sa.Column(sa.Integer, index=True)  # 交易状态
 
 
@@ -65,6 +67,8 @@ class AShareSuspend(BaseORM):
     suspend_time = sa.Column(sa.String(100))  # 停复牌时间
     reason_type = sa.Column(sa.String(40))  # 停牌原因代码 change_reason_type
 
+    uk = sa.UniqueConstraint(suspend_date, suspend_type, wind_code, name=f'uk_{__tablename__}_dt_tp_code')
+
 
 class AShareEODDerivativeIndicator(BaseORM):
     """ A股日行情估值指标 """
@@ -75,41 +79,41 @@ class AShareEODDerivativeIndicator(BaseORM):
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
 
-    pe = sa.Column(pg.REAL)  # 市盈率(PE)(总市值/净利润(若净利润<=0,则返回空))
-    pb_new = sa.Column(pg.REAL)  # 市净率(PB)(总市值/净资产(LF))
-    pe_ttm = sa.Column(pg.REAL)  # 市盈率(PE,TTM)(总市值/净利润(TTM))
-    pcf_ocf = sa.Column(pg.REAL)  # 市现率(PCF,经营现金流)
-    pcf_ocf_ttm = sa.Column(pg.REAL)  # 市现率(PCF,经营现金流TTM)
-    pcf_ncf = sa.Column(pg.REAL)  # 市现率(PCF,现金净流量)
-    pcf_ncf_ttm = sa.Column(pg.REAL)  # 市现率(PCF,现金净流量TTM)
-    ps = sa.Column(pg.REAL)  # 市销率(PS)
-    ps_ttm = sa.Column(pg.REAL)  # 市销率(PS,TTM)
+    pe = sa.Column(sa.Float)  # 市盈率(PE)(总市值/净利润(若净利润<=0,则返回空))
+    pb_new = sa.Column(sa.Float)  # 市净率(PB)(总市值/净资产(LF))
+    pe_ttm = sa.Column(sa.Float)  # 市盈率(PE,TTM)(总市值/净利润(TTM))
+    pcf_ocf = sa.Column(sa.Float)  # 市现率(PCF,经营现金流)
+    pcf_ocf_ttm = sa.Column(sa.Float)  # 市现率(PCF,经营现金流TTM)
+    pcf_ncf = sa.Column(sa.Float)  # 市现率(PCF,现金净流量)
+    pcf_ncf_ttm = sa.Column(sa.Float)  # 市现率(PCF,现金净流量TTM)
+    ps = sa.Column(sa.Float)  # 市销率(PS)
+    ps_ttm = sa.Column(sa.Float)  # 市销率(PS,TTM)
 
-    share_tot = sa.Column(pg.REAL)  # 当日总股本(万股) tot_shr
-    share_float = sa.Column(pg.REAL)  # 当日流通股本(万股) float_a_shr
-    share_free = sa.Column(pg.REAL)  # 当日自由流通股本(万股) free_shares
+    share_tot = sa.Column(sa.Float)  # 当日总股本(万股) tot_shr
+    share_float = sa.Column(sa.Float)  # 当日流通股本(万股) float_a_shr
+    share_free = sa.Column(sa.Float)  # 当日自由流通股本(万股) free_shares
 
-    turnover = sa.Column(pg.REAL)  # 换手率 turn
-    turnover_free = sa.Column(pg.REAL)  # 换手率(基准.自由流通股本) free_turnover
+    turnover = sa.Column(sa.Float)  # 换手率 turn
+    turnover_free = sa.Column(sa.Float)  # 换手率(基准.自由流通股本) free_turnover
 
-    price_div_dps = sa.Column(pg.REAL)  # 股价/每股派息
+    price_div_dps = sa.Column(sa.Float)  # 股价/每股派息
 
-    close = sa.Column(pg.REAL)  # 当日收盘价
+    close = sa.Column(sa.Float)  # 当日收盘价
     suspend_status = sa.Column(sa.Integer, index=True)
     # 涨跌停状态(1表示涨停;0表示非涨停或跌停;-1表示跌停) up_down_limit_status
 
-    adj_high_52w = sa.Column(pg.REAL)  # 52周最高价(复权) adj_high_52w
-    adj_low_52w = sa.Column(pg.REAL)  # 52周最低价(复权) adj_low_52w
+    adj_high_52w = sa.Column(sa.Float)  # 52周最高价(复权) adj_high_52w
+    adj_low_52w = sa.Column(sa.Float)  # 52周最低价(复权) adj_low_52w
 
-    net_assets = sa.Column(pg.REAL)  # 当日净资产
-    net_profit_parent_comp_ttm = sa.Column(pg.REAL)  # 归属母公司净利润(TTM)
-    net_profit_parent_comp_lyr = sa.Column(pg.REAL)  # 归属母公司净利润(LYR)
-    net_cash_flows_oper_act_ttm = sa.Column(pg.REAL)  # 经营活动产生的现金流量净额(TTM)
-    net_cash_flows_oper_act_lyr = sa.Column(pg.REAL)  # 经营活动产生的现金流量净额(LYR)
-    oper_rev_ttm = sa.Column(pg.REAL)  # 营业收入(TTM)
-    oper_rev_lyr = sa.Column(pg.REAL)  # 营业收入(LYR)
-    net_increase_cash_equ_ttm = sa.Column(pg.REAL)  # 现金及现金等价物净增加额(TTM) net_incr_cash_cash_equ_ttm
-    net_increase_cash_equ_lyr = sa.Column(pg.REAL)  # 现金及现金等价物净增加额(LYR) net_incr_cash_cash_equ_lyr
+    net_assets = sa.Column(sa.Float)  # 当日净资产
+    net_profit_parent_comp_ttm = sa.Column(sa.Float)  # 归属母公司净利润(TTM)
+    net_profit_parent_comp_lyr = sa.Column(sa.Float)  # 归属母公司净利润(LYR)
+    net_cash_flows_oper_act_ttm = sa.Column(sa.Float)  # 经营活动产生的现金流量净额(TTM)
+    net_cash_flows_oper_act_lyr = sa.Column(sa.Float)  # 经营活动产生的现金流量净额(LYR)
+    oper_rev_ttm = sa.Column(sa.Float)  # 营业收入(TTM)
+    oper_rev_lyr = sa.Column(sa.Float)  # 营业收入(LYR)
+    net_increase_cash_equ_ttm = sa.Column(sa.Float)  # 现金及现金等价物净增加额(TTM) net_incr_cash_cash_equ_ttm
+    net_increase_cash_equ_lyr = sa.Column(sa.Float)  # 现金及现金等价物净增加额(LYR) net_incr_cash_cash_equ_lyr
 
 
 class AShareSector(BaseORM):

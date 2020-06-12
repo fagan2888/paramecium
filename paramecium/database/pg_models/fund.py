@@ -3,7 +3,9 @@
 @Time: 2020/5/12 21:00
 @Author: Sue Zhu
 """
-from .utils import *
+import sqlalchemy as sa
+
+from .._postgres import *
 
 
 class Description(BaseORM):

@@ -3,7 +3,8 @@
 @Time: 2020/6/1 12:51
 @Author: Sue Zhu
 """
-from .utils import *
+import sqlalchemy as sa
+from .._postgres import *
 
 
 class Description(BaseORM):
@@ -37,12 +38,12 @@ class EODPrice(BaseORM):
     wind_code = sa.Column(sa.String(40), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
     currency = sa.Column(sa.String(40))  # 货币代码 crncy_code
-    open_ = sa.Column(pg.REAL)  # 开盘价(元) open
-    high_ = sa.Column(pg.REAL)  # 最高价(元) high
-    low_ = sa.Column(pg.REAL)  # 最低价(元) low
-    close_ = sa.Column(pg.REAL)  # 收盘价(元) close
+    open_ = sa.Column(sa.Float)  # 开盘价(元) open
+    high_ = sa.Column(sa.Float)  # 最高价(元) high
+    low_ = sa.Column(sa.Float)  # 最低价(元) low
+    close_ = sa.Column(sa.Float)  # 收盘价(元) close
     volume_ = sa.Column(sa.REAL)  # 成交量(手) volume
-    amount_ = sa.Column(pg.REAL)  # 成交金额(千元) amount
+    amount_ = sa.Column(sa.Float)  # 成交金额(千元) amount
 
 
 class DerivativeDesc(BaseORM):

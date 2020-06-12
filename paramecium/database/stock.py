@@ -7,7 +7,7 @@ from functools import lru_cache
 
 import pandas as pd
 
-from ._models import stock
+from .pg_models import stock
 from ._postgres import get_session
 from ._third_party_api import get_tushare_data
 from ._tool import flat_1dim

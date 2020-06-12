@@ -12,7 +12,7 @@ HTTP_ADDRESS = '127.0.0.1'
 # Set logging level
 logging.getLogger().setLevel(logging.DEBUG)
 
-JOB_CLASS_PACKAGES = ['paramecium.database._crawler']
+JOB_CLASS_PACKAGES = ['paramecium.database._crawlers', 'paramecium.scheduled_jobs']
 # Postgres
 DATABASE_CLASS = 'ndscheduler.corescheduler.datastore.providers.postgres.DatastorePostgres'
 _db = get_data_config('postgres')

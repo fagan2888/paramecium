@@ -3,31 +3,75 @@
 @Time: 2020/6/8 9:54
 @Author: Sue Zhu
 """
+__all__ = [
+    'BaseORM', 'gen_oid', 'gen_update',
+    'get_sql_engine', 'get_session', 'try_commit',
+    'get_or_create_table', 'create_all_table', 'upsert_data', 'bulk_insert', 'clean_duplicates'
+]
+
 import logging
 from contextlib import contextmanager
 
 import pandas as pd
 import sqlalchemy as sa
+import sqlalchemy.exc as sa_err
 from sqlalchemy import orm as sa_orm
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.engine.url import URL as sa_url
-from sqlalchemy.exc import DataError
+from sqlalchemy.dialects import postgresql as pg
+from sqlalchemy.engine.url import URL
+from sqlalchemy.ext.declarative import declarative_base
 
-from ._models.utils import BaseORM, gen_update, gen_oid
 from ..configuration import get_data_config
 
 logger = logging.getLogger(__name__)
 
 
-def get_sql_engine(env='postgres', **kwargs):
+def _df2list(raw_data):
+    if isinstance(raw_data, pd.DataFrame):
+        return [record.dropna().to_dict() for _, record in raw_data.iterrows()]
+    else:
+        return raw_data
+
+
+def try_commit(session, on_doing, success=''):
+    try:
+        session.commit()
+        if success:
+            logger.info(success)
+    except sa_err.DataError as e:
+        logger.error(f'step into breakpoint for {repr(e)}')
+        breakpoint()
+    except Exception as e:
+        logger.error(f'fail to commit session when {on_doing} with {e!r}')
+        session.rollback()
+
+
+def gen_oid():
+    return sa.Column('oid', pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
+
+
+def gen_update():
+    return sa.Column(
+        'updated_at', sa.TIMESTAMP,
+        server_default=sa.func.current_timestamp(),
+        server_onupdate=sa.func.current_timestamp()
+    )
+
+
+BaseORM = declarative_base(
+    cls=type('DBMeta', (object,), {
+        'updated_at': gen_update(),
+        'get_primary_key': classmethod(lambda cls: cls._sa_class_manager.mapper.primary_key)
+    })
+)
+
+
+def get_sql_engine(**kwargs):
     params = dict(pool_size=30, encoding='utf-8')
     params.update(**kwargs)
-    return sa.create_engine(sa_url(**get_data_config(env)), **params)
+    return sa.create_engine(URL(**get_data_config('postgres')), **params)
 
 
-_Session = sa_orm.scoped_session(sa_orm.sessionmaker(
-    bind=get_sql_engine(env='postgres')  # , echo=True
-))
+_Session = sa_orm.scoped_session(sa_orm.sessionmaker(bind=get_sql_engine()))  # echo=True
 
 
 @contextmanager
@@ -38,9 +82,9 @@ def get_session():
 
 
 def create_all_table():
-    from ._models import index, stock, fund, others
+    # from .pg_models import stock, fund, index, monitors, others
     logger.info('creating all sqlalchemy data models')
-    BaseORM.metadata.create_all(get_sql_engine('postgres'))
+    BaseORM.metadata.create_all(get_sql_engine())
 
     # create some view for query.
     with get_session() as session:
@@ -54,41 +98,41 @@ def create_all_table():
             from index_derivative_price
             """
         )
-        try:
-            session.commit()
-        except DataError as e:
-            logger.error(f'step into breakpoint for {repr(e)}')
-            breakpoint()
-        except Exception as e:
-            logger.error(f'fail to commit session when create index price view {e!r}')
-            session.rollback()
+        try_commit(session, 'create index price view')
 
 
-def get_table_by_name(name):
-    # from ._models import index, stock, fund, others
-    BaseORM.metadata.reflect(bind=get_sql_engine(env='postgres'),views=True)
+def get_or_create_table(name, *columns, **kwargs):
+    engine = get_sql_engine()  # echo=True
+    BaseORM.metadata.reflect(bind=engine, views=True)
+    if name not in BaseORM.metadata.tables:
+        if columns:
+            table = sa.Table(
+                name, BaseORM.metadata,
+                gen_oid(), gen_update(), *columns,
+                keep_existing=True, **kwargs
+            )
+            table.create(bind=engine)
+        else:
+            raise sa_err.NoSuchTableError("Table")
+
     return BaseORM.metadata.tables[name]
 
 
 def bulk_insert(records, model):
     with get_session() as session:
-        session.bulk_insert_mappings(model, records)
-
-        try:
-            session.commit()
-        except DataError as e:
-            logger.error(f'step into breakpoint for {repr(e)}')
-            breakpoint()
-        except Exception as e:
-            logger.error(f'fail to commit session when bulk insert data for {model.__tablename__} {e!r}')
-            session.rollback()
+        if isinstance(model, sa.Table):
+            session.execute(pg.insert(model, _df2list(records)))
+            try_commit(session, f'normal insert data for {model.key}')
+        else:
+            session.bulk_insert_mappings(model, _df2list(records))
+            try_commit(session, f'bulk insert data for {model.__tablename__}')
 
 
 def upsert_data(records, model, ukeys=None):
     result_ids = []
     with get_session() as session:
-        for record in records:
-            insert_exe = insert(model).values(**record)
+        for record in _df2list(records):
+            insert_exe = pg.insert(model).values(**record)
             if ukeys:
                 set_ = {k: sa.text(f'EXCLUDED.{k}') for k in {*record.keys()} - {*(c.key for c in ukeys)}}
                 insert_exe = insert_exe.on_conflict_do_update(
@@ -98,14 +142,7 @@ def upsert_data(records, model, ukeys=None):
             exe_result = session.execute(insert_exe)
             result_ids.extend(exe_result.inserted_primary_key)
 
-        try:
-            session.commit()
-        except DataError as e:
-            logger.error(f'step into breakpoint for {repr(e)}')
-            breakpoint()
-        except Exception as e:
-            logger.error(f'fail to commit session when upsert data for {model.__tablename__} {e!r}')
-            session.rollback()
+        try_commit(session, f'upsert data for {model.__tablename__}')
 
     return result_ids
 
@@ -127,23 +164,4 @@ def clean_duplicates(model, unique_cols):
                 duplicates.set_index(pk.name).loc[lambda df: df.duplicated(keep='last')].index.tolist()
             )).delete(synchronize_session='fetch')
 
-        try:
-            session.commit()
-        except DataError as e:
-            logger.error(f'step into breakpoint for {repr(e)}')
-            breakpoint()
-        except Exception as e:
-            logger.error(f'fail to commit session when clean duplicates for {model.__tablename__} {e!r}')
-            session.rollback()
-
-
-def get_or_create_table(name, *columns, **kwargs):
-    table = sa.Table(
-        name, BaseORM.metadata,
-        gen_oid(), gen_update(), *columns,
-        keep_existing=True, **kwargs
-    )
-    engine = get_sql_engine('postgres', echo=True)
-    if not engine.has_table(name):
-        table.create(bind=engine)
-    return table
+        try_commit(session, f'clean duplicates for {model.__tablename__}')

@@ -3,7 +3,8 @@
 @Time: 2020/5/28 10:54
 @Author: Sue Zhu
 """
-from .utils import *
+from .._postgres import *
+import sqlalchemy as sa
 
 
 class TradeCalendar(BaseORM):
@@ -32,5 +33,5 @@ class InterestRate(BaseORM):
     __tablename__ = 'macro_interest_rate'
 
     change_dt = sa.Column(sa.Date, primary_key=True)
-    save_rate = sa.Column(pg.REAL)  # 单位：%
-    loan_rate = sa.Column(pg.REAL)  # 单位：%
+    save_rate = sa.Column(sa.Float)  # 单位：%
+    loan_rate = sa.Column(sa.Float)  # 单位：%

@@ -2,6 +2,9 @@
 """
 @Time: 2020/6/9 14:41
 @Author: Sue Zhu
+
+Utility functions use for portfolio return analysis.
+All use numpy to speed up.
 """
 import numpy as np
 
@@ -66,6 +69,12 @@ def conditional_var(returns, alpha=0.05):
 
 
 def regression(returns, factors):
+    """
+    Regression function directly use numpy function. maybe add a weight param later.
+    :param returns: returns array with n sample and k portfolio.
+    :param factors: returns array with n sample and k factor.
+    :return:
+    """
     cov_inv = np.linalg.pinv(factors.T @ factors)
     beta = cov_inv @ factors.T @ returns
     rss = np.sum(np.square(returns - factors @ beta), axis=0, keepdims=True)
@@ -75,4 +84,4 @@ def regression(returns, factors):
 
     tss = np.sum(np.square(returns - np.mean(returns, axis=0)), axis=0, keepdims=True)
     r2_value = 1 - np.divide(rss, tss)
-    return np.hstack([beta.T, t_value, r2_value])
+    return np.hstack([beta.T, t_value, r2_value.T])

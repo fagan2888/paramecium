@@ -9,13 +9,14 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from ._base import *
-from .._models import fund
+from .._postgres import get_session
 from ..comment import get_dates, get_last_td
+from ..pg_models import fund
+from ._base import CrawlerJob
 from ... import const, utils
 
 
-class FundDescription(TushareCrawlerJob):
+class FundDescription(CrawlerJob):
     """
     Crawler fund descriptions from tushare
     """
@@ -28,8 +29,8 @@ class FundDescription(TushareCrawlerJob):
         'FUND_INVESTOBJECT': 'invest_object',
         'FUND_SALEFEERATIO': 'fee_ratio_sale',
         'FUND_FULLNAME': 'full_name',
-        'fund_smftype'.upper(): 'grad_type',
-        'fund_etfwindcode'.upper(): 'etf_code'
+        'FUND_SMFTYPE': 'grad_type',
+        'FUND_ETFWINDCODE': 'etf_code'
     }
 
     @staticmethod
@@ -43,49 +44,24 @@ class FundDescription(TushareCrawlerJob):
         else:
             return desc.rename(columns=self.w_info)
 
-    def run(self, env='prod', *args, **kwargs):
-        super().run(env, *args, **kwargs)
+    def run(self, *args, **kwargs):
         model = fund.Description
 
-        self.get_logger().info('Getting description from wind')
-        with get_wind_api() as w:
-            err, w_fund_list = w.wset(
-                "sectorconstituent",
-                f"date={pd.Timestamp.now():%Y-%m-%d};sectorid={const.WindSector.MF.value};field=wind_code",
-                usedf=True
-            )
-            w_fund_list = w_fund_list.squeeze()
-            w_fund_list.index = w_fund_list.str.replace('!', '')
-            wind_desc = pd.concat((
-                self.get_wind_info(funds, w) for funds in utils.chunk(w_fund_list.values, 800)
-            )).rename(lambda x: x.replace('!', '')).assign(wind_code=w_fund_list)
+        self.get_logger().debug('Getting fund list from wind')
+        w_set = self.query_wind(
+            api_name='wset', tablename="sectorconstituent",
+            options=f"date={pd.Timestamp.now():%Y-%m-%d};sectorid={const.WindSector.MF.value};field=wind_code"
+        ).squeeze()
 
-            wind_desc.loc[:, 'is_initial'] = (wind_desc['is_initial'] == '是').astype(int)
+        self.get_logger().debug('getting description from wind')
+        w_desc = pd.concat((
+            self.query_wind(
+                api_name='wss', codes=funds, fields=[*self.w_info.keys()], col_mapping=self.w_info
+            ) for funds in utils.chunk(w_set.values, 800)
+        ), axis=0, sort=False)
+        w_desc.loc[:, 'is_initial'] = (w_desc['is_initial'] == '是').astype(int)
 
-            self.get_logger().info('Deal with grad funds.')
-            grad = wind_desc.dropna(subset=['grad_type']).pivot('full_name', 'grad_type', 'wind_code')
-            grad = grad.fillna({'分级基金优先级': grad['分级基金母基金']})
-            # wind think grad A as initial, adjust to parent.
-            wind_desc.loc[wind_desc['wind_code'].isin(grad['分级基金优先级']), 'is_initial'] = False
-            wind_desc.loc[wind_desc['wind_code'].isin(grad['分级基金母基金']), 'is_initial'] = True
-            # insert connections
-            for chn, eng in (('分级基金优先级', 'A'), ('分级基金普通级', 'B')):
-                self.insert_data(
-                    records=grad.loc[:, ['分级基金母基金', chn]].rename(columns={
-                        '分级基金母基金': 'parent_code', '分级基金优先级': 'child_code', '分级基金普通级': 'child_code'
-                    }).assign(connect_type=eng),
-                    model=fund.Connections, ukeys=fund.Connections.uk.columns, msg=eng
-                )
-
-            self.get_logger().info('Deal with etf feeder funds.')
-            self.insert_data(
-                records=wind_desc.dropna(subset=['etf_code']).loc[:, ['etf_code', 'wind_code']].rename(columns={
-                    'etf_code': 'parent_code', 'wind_code': 'child_code'
-                }).assign(connect_type='F'),
-                model=fund.Connections, ukeys=fund.Connections.uk.columns, msg='F'
-            )
-
-        self.get_logger().info('Getting description from tushare')
+        self.get_logger().debug('getting description from tushare')
         ts_desc = pd.concat(
             (self.get_tushare_data(
                 api_name='fund_basic', market=m,
@@ -94,26 +70,57 @@ class FundDescription(TushareCrawlerJob):
             ) for m in list('OE')),
             axis=0, sort=False
         ).set_index('wind_code').filter(model.__dict__.keys(), axis=1)
-
         ts_desc.loc[
             lambda df: df['setup_date'].notnull() & df['maturity_date'].isnull(), 'maturity_date'] = pd.Timestamp.max
 
+        self.get_logger().debug('merge wind and tushare data.')
+
+        suffix = {k: v for k, v in ts_desc.index.str.split('.') if v != 'OF'}
+        def _func(code):
+            pre, ex = code.split('.')
+            return '.'.join((pre, suffix.get(pre.replace('!', ''), ex)))
+
+        w_desc['wind_code'] = w_desc.index.map(_func)
+        w_desc.index = w_desc['wind_code'].map(lambda x: x.replace('!', ''))
+
         desc = pd.concat((
-            wind_desc.drop(['grad_type', 'etf_code'], axis=1, errors='ignore'), ts_desc
+            w_desc.drop(['grad_type', 'etf_code'], axis=1, errors='ignore'),
+            ts_desc
         ), axis=1, sort=False).dropna(subset=['wind_code'])
-        self.get_logger().info('Saving description into database')
+        self.get_logger().info('saving description into database')
         self.insert_data(records=desc, model=model, ukeys=[model.wind_code])
 
+        self.get_logger().debug('deal with grad funds.')
+        grad = w_desc.dropna(subset=['grad_type']).pivot('full_name', 'grad_type', 'wind_code')
+        grad = grad.fillna({'分级基金优先级': grad['分级基金母基金']})
+        # wind think grad A as initial, adjust to parent.
+        w_desc.loc[lambda df: df['wind_code'].isin(grad['分级基金优先级']), 'is_initial'] = False
+        w_desc.loc[lambda df: df['wind_code'].isin(grad['分级基金母基金']), 'is_initial'] = True
+        # insert connections
+        for chn, eng in (('分级基金优先级', 'A'), ('分级基金普通级', 'B')):
+            self.insert_data(
+                records=grad.loc[:, ['分级基金母基金', chn]].rename(columns={
+                    '分级基金母基金': 'parent_code', '分级基金优先级': 'child_code', '分级基金普通级': 'child_code'
+                }).assign(connect_type=eng),
+                model=fund.Connections, ukeys=fund.Connections.uk.columns, msg=eng
+            )
+
+        self.get_logger().debug('deal with etf feeder funds.')
+        self.insert_data(
+            records=w_desc.loc[:, ['etf_code', 'wind_code']].dropna(subset=['etf_code']).rename(columns={
+                'etf_code': 'parent_code', 'wind_code': 'child_code'
+            }).assign(connect_type='F'),
+            model=fund.Connections, ukeys=fund.Connections.uk.columns, msg='F'
+        )
 
 
-class FundSales(WebCrawlerJob):
+class FundSales(CrawlerJob):
     meta_args = (
-        # n_records
-        {'type': 'int', 'description': 'number more than sale funds.'},
+        {'type': 'int', 'description': 'number more than sale funds.'},  # n_records
     )
 
     def run(self, n_records=3000, *args, **kwargs):
-        responds_raw = self.request(
+        responds_raw = self.request_from_web(
             url=f"https://wpt.xcsc.com/lcsc/servlet/json?funcNo=24030123&page=1&numPerPage={n_records}"
         )
         responds_json = json.loads(responds_raw.text)['results'][0]
@@ -135,15 +142,14 @@ class FundSales(WebCrawlerJob):
         self.insert_data(responds_df, model=fund.WebSaleList, ukeys=[fund.WebSaleList.product_code])
 
 
-class FundNav(TushareCrawlerJob):
+class FundNav(CrawlerJob):
     """
     Crawler fund net asset values from tushare
     Since tushare api can only request 10,000 times per hour,
     use `try-except` to get most.
     """
 
-    def run(self, env='prod', *args, **kwargs):
-        super().run(env, *args, **kwargs)
+    def run(self, *args, **kwargs):
         self.get_logger().info('query exist nav data to get query range')
         with get_session() as session:
             max_dts = pd.read_sql(
@@ -195,13 +201,12 @@ class FundNav(TushareCrawlerJob):
         return pd.DataFrame()
 
 
-class FundManager(TushareCrawlerJob):
+class FundManager(CrawlerJob):
     """
     Crawler fund net asset values from tushare
     """
 
-    def run(self, env='prod', *args, **kwargs):
-        super().run(env, *args, **kwargs)
+    def run(self, *args, **kwargs):
         model = fund.ManagerHistory
 
         with get_session() as session:
@@ -215,64 +220,45 @@ class FundManager(TushareCrawlerJob):
                 'start_dt': pd.Timestamp.min,
                 'end_dt': pd.Timestamp.max,
             })
-            self.insert_data(managers, model, ukeys=[model.wind_code, model.start_dt, model.manager_name])
+            self.insert_data(managers, model, ukeys=model.uk.columns)
 
 
-class FundSector(BaseLocalizerJob):
+class FundSector(CrawlerJob):
     """
-    Crawler fund sector data
+    Crawler fund sector data from wind api
     """
 
-    def query_and_insert(self, api, type_, freq, codes):
-        for month_end in (t for t in get_dates(freq) if self.get_max_dt(type_) < t <= get_last_td()):
-            try:
-                sector_list = pd.concat((self.get_sector_from_wind(month_end, sector, api) for sector in codes))
-            except WindDataError:
-                self.get_logger().error(repr(WindDataError))
-                break
-            else:
-                self.insert_data(sector_list, fund.SectorSnapshot, msg=f'{month_end:%Y%m%d}')
-
-    def run(self, *args, **kwargs):
-        with get_wind_api() as w:
-            # '200101x'按底层资产分类
-            self.query_and_insert(
-                w, '2001', const.FreqEnum.M,
-                (
-                    '2001010101000000', '2001010102000000', '2001010103000000', '2001010201000000',
-                    '2001010202000000', '2001010203000000', '2001010204000000', '2001010301000000',
-                    '2001010302000000', '2001010303000000', '2001010304000000', '2001010305000000',
-                    '2001010306000000', '2001010400000000'
-                )
-            )
-            # '1000x'特殊分类
-            self.query_and_insert(
-                w, '1000', const.FreqEnum.Q,
-                # 定期开放,委外,机构,可转债
-                ("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000")
-            )
-
-    @staticmethod
-    def get_sector_from_wind(trade_dt, sector, api):
-        err, sector_list = api.wset(
-            tablename="sectorconstituent", usedf=True,
-            options=f"date={trade_dt:%Y-%m-%d};sectorid={sector};field=wind_code",
-        )
-        if err == 0:
-            return sector_list.assign(trade_dt=trade_dt, sector_code=sector, type_=sector[:4])
-        else:
-            raise WindDataError(f'Wind Data Api Error with {err}')
-
-    @staticmethod
-    def get_max_dt(code):
+    def query_and_insert(self, type_, freq, codes):
         with get_session() as ss:
             max_dt, = ss.query(
                 sa.func.max(fund.SectorSnapshot.trade_dt).label('max_dt')
-            ).filter(
-                fund.SectorSnapshot.type_ == code
-            ).one()
+            ).filter(fund.SectorSnapshot.type_ == type_).one()
         if max_dt is not None:
             max_dt = pd.to_datetime(max_dt)
         else:
             max_dt = pd.Timestamp('2009-12-30')
-        return max_dt
+
+        for month_end in (t for t in get_dates(freq) if max_dt < t <= get_last_td()):
+            sector_list = pd.concat((self.query_wind(
+                api_name='wset', tablename="sectorconstituent", usedf=True,
+                options=f"date={month_end:%Y-%m-%d};sectorid={sector};field=wind_code",
+            ).assign(trade_dt=month_end, sector_code=sector, type_=sector[:4]) for sector in codes))
+            self.insert_data(sector_list, fund.SectorSnapshot, msg=f'{month_end:%Y%m%d}')
+
+    def run(self, *args, **kwargs):
+        # '200101x'按底层资产分类
+        self.query_and_insert(
+            '2001', const.FreqEnum.M,
+            (
+                '2001010101000000', '2001010102000000', '2001010103000000', '2001010201000000',
+                '2001010202000000', '2001010203000000', '2001010204000000', '2001010301000000',
+                '2001010302000000', '2001010303000000', '2001010304000000', '2001010305000000',
+                '2001010306000000', '2001010400000000'
+            )
+        )
+        # '1000x'特殊分类
+        self.query_and_insert(
+            '1000', const.FreqEnum.Q,
+            # 定期开放,委外,机构,可转债
+            ("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000")
+        )

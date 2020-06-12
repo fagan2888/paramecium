@@ -4,7 +4,7 @@
 @Author: Sue Zhu
 """
 __all__ = [
-    'get_dates', 'get_last_td',
+    'get_dates', 'get_last_td', 'resampler',
     'get_risk_free_rates',
     'get_price', 'get_sector'
 ]
@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from ._models import others, fund
-from ._postgres import get_table_by_name, get_session
+from .pg_models import others
+from ._postgres import get_session, get_or_create_table
 from ._tool import flat_1dim
 from ..const import FreqEnum, AssetEnum
 
@@ -58,7 +58,7 @@ def get_basic_rates(type_='save'):
 
 def get_risk_free_rates(type_='save', freq=FreqEnum.D):
     basic_rates = pd.Series(get_basic_rates(type_)).rename(index=pd.to_datetime)
-    daily_rates =basic_rates.reindex(index=pd.date_range(basic_rates.index[0], pd.Timestamp.now(), freq='D'))
+    daily_rates = basic_rates.reindex(index=pd.date_range(basic_rates.index[0], pd.Timestamp.now(), freq='D'))
     rf = daily_rates.ffill().bfill().add(1).pow(1 / freq.value).sub(1)
     return rf.filter(items=get_dates(freq))
 
@@ -69,7 +69,7 @@ def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
         AssetEnum.CMF: 'mf_org_nav',
         AssetEnum.INDEX: 'index_price',
     }
-    model = get_table_by_name(tb_dict[asset])
+    model = get_or_create_table(name=tb_dict[asset])
 
     filters = []
     if start and end and start == end:
@@ -97,24 +97,24 @@ def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):
 
 def get_sector(asset: AssetEnum, valid_dt, sector_prefix=None):
     if asset == AssetEnum.STOCK:
-        table = get_table_by_name(f'{asset.value}_org_sector')
+        model = get_or_create_table(name=f'{asset.value}_org_sector')
         filters = [
-            valid_dt >= table.c.entry_dt,
-            valid_dt <= table.c.remove_dt
+            valid_dt >= model.c.entry_dt,
+            valid_dt <= model.c.remove_dt
         ]
         if sector_prefix:
-            filters.append(sa.func.substr(table.c.sector_code, 1, len(sector_prefix)) == sector_prefix)
+            filters.append(sa.func.substr(model.sector_code, 1, len(sector_prefix)) == sector_prefix)
     elif asset == AssetEnum.CMF:
         # Temporary solution
-        table = get_table_by_name('mf_org_sector_m')
-        filters = [valid_dt == table.c.trade_dt]
+        model = get_or_create_table(name='mf_org_sector_m')
+        filters = [valid_dt == model.c.trade_dt]
         if sector_prefix:
-            filters.append(table.c.type_==sector_prefix)
+            filters.append(model.c.type_ == sector_prefix)
     else:
         raise KeyError(f"Unknown asset type {asset}.")
 
     with get_session() as session:
-        sa_fields = (c for c in table.c if c.key not in ('oid', 'updated_at'))
+        sa_fields = (c for c in model.c if c.key not in ('oid', 'updated_at'))
         data = pd.DataFrame(session.query(*sa_fields).filter(*filters).all()).fillna(np.nan)
         for t_col in {'entry_dt', 'remove_dt', 'trade_dt'} & {*data.columns}:
             data.loc[:, t_col] = pd.to_datetime(data[t_col])

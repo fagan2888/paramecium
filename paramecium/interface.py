@@ -10,8 +10,8 @@ import logging
 
 import pandas as pd
 
-from paramecium.const import AssetEnum, FreqEnum
-from paramecium.utils import camel2snake
+from .const import AssetEnum, FreqEnum
+from .utils import camel2snake
 
 
 class AbstractTransformer(metaclass=abc.ABCMeta):
@@ -39,6 +39,9 @@ class AbstractFactor(metaclass=abc.ABCMeta):
     asset_type: AssetEnum = None
     start_date = pd.Timestamp.min
 
+    def __str__(self):
+        return self.__class__.__name__
+
     @property
     def name(self):
         return camel2snake(self.__class__.__name__)
@@ -60,11 +63,7 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
 
     @property
     def logger(self):
-        return logging.getLogger(f'{self.__class__.__name__:s}({self._factor.__class__.__name__:s})')
-
-    @property
-    def table_name(self):
-        return f"{self._factor.asset_type.value}_factor_{self._factor.name}"
+        return logging.getLogger(f'{self.__class__.__name__:s}({self._factor!s})')
 
     @abc.abstractmethod
     def localized_snapshot(self, dt, if_exist=1):
@@ -86,7 +85,7 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
         return ()
 
     @abc.abstractmethod
-    def _get_dates(self, start, end, freq):
+    def _get_calc_dates(self, start, end, freq):
         """
         日期序列
         :param start: pd.Timestamp
@@ -97,11 +96,5 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
         return ()
 
     def localized_time_series(self, start=None, end=None, freq=FreqEnum.M, if_exist=1):
-        for t in self._get_dates(start, end, freq):
+        for t in self._get_calc_dates(start, end, freq):
             self.localized_snapshot(t, if_exist)
-
-    def fetch_time_series(self, start=None, end=None, freq=FreqEnum.M):
-        return pd.concat(
-            {t: self.fetch_snapshot(t) for t in self._get_dates(start, end, freq)},
-            axis=0, sort=False, names=['trade_dt', 'wind_code']
-        )

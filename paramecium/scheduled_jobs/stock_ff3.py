@@ -9,14 +9,13 @@ import pandas as pd
 import sqlalchemy as sa
 
 from ._base import *
-from .._models import index
-from ..comment import get_price, get_dates, get_last_td
-from ..factor_io import FactorDBTool
-from ... import const
-from ...factor_pool import stock_classic
+from .. import const
+from ..database import get_last_td, get_dates, FactorDBTool, get_price
+from ..database.pg_models import index
+from ..factor_pool import stock_classic
 
 
-class StockFF3Factor(BaseLocalizerJob):
+class StockFF3Factor(BaseJob):
     """
     Localized Stock Fama-French Data
     """
@@ -82,7 +81,18 @@ class StockFF3Factor(BaseLocalizerJob):
             self.io.localized_snapshot(month_end, if_exist=1)
         factor_val = self.io.fetch_snapshot(month_end)
         stock_close = self.get_stock_close(month_end)
-        ff3_close = self.get_index_close(self.codes, month_end)
+
+        with get_session() as session:
+            ff3_close = pd.DataFrame(
+                session.query(
+                    index.DerivativePrice.benchmark_code,
+                    index.DerivativePrice.close_,
+                ).filter(
+                    index.DerivativePrice.trade_dt == month_end,
+                    index.DerivativePrice.benchmark_code.in_(self.codes),
+                ).all(),
+                columns=['benchmark_code', 'close_']
+            ).set_index('benchmark_code').squeeze()
 
         trade_dates = (t for t in get_dates(const.FreqEnum.D) if real_start < t <= pd.Timestamp(end))
         for dt in trade_dates:
@@ -106,21 +116,8 @@ class StockFF3Factor(BaseLocalizerJob):
 
     @staticmethod
     def get_stock_close(dt):
-        price = get_price(const.AssetEnum.STOCK, start=dt, end=dt, fields=['close_', 'adj_factor']).set_index(
-            'wind_code')
+        price = get_price(
+            const.AssetEnum.STOCK, start=dt, end=dt,
+            fields=['close_', 'adj_factor']
+        ).set_index('wind_code')
         return price['close_'].mul(price['adj_factor'])
-
-    @staticmethod
-    def get_index_close(codes, dt):
-        with get_session() as session:
-            ff3_close = pd.DataFrame(
-                session.query(
-                    index.DerivativePrice.benchmark_code,
-                    index.DerivativePrice.close_,
-                ).filter(
-                    index.DerivativePrice.trade_dt == dt,
-                    index.DerivativePrice.benchmark_code.in_(codes),
-                ).all(),
-                columns=['benchmark_code', 'close_']
-            ).set_index('benchmark_code').squeeze()
-        return ff3_close

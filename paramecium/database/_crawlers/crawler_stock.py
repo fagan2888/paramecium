@@ -8,20 +8,21 @@ from itertools import product
 import pandas as pd
 import sqlalchemy as sa
 
-from ._base import *
-from .._models import stock, others
-from ..comment import get_dates, get_last_td
+from .._postgres import get_session
+from .._tool import get_type_codes
+from ..comment import get_last_td, get_dates
+from ..pg_models import index, stock, others
+from ._base import CrawlerJob
 from ... import const
 
 
-class AShareDescription(TushareCrawlerJob):
+class AShareDescription(CrawlerJob):
     """
     Crawling stock description from tushare
     http://tushare.xcsc.com:7173/document/2?doc_id=25
     """
 
-    def run(self, env='prod', *args, **kwargs):
-        super().run(env, *args, **kwargs)
+    def run(self, *args, **kwargs):
         model = stock.AShareDescription
         stock_info = pd.concat((
             self.get_tushare_data(
@@ -33,7 +34,7 @@ class AShareDescription(TushareCrawlerJob):
         self.insert_data(records=stock_info, model=model, ukeys=model.get_primary_key())
 
 
-class _CrawlerEOD(TushareCrawlerJob):
+class _CrawlerEOD(CrawlerJob):
 
     @property
     def model(self):
@@ -42,24 +43,22 @@ class _CrawlerEOD(TushareCrawlerJob):
     def get_eod_data(self, **func_kwargs):
         return NotImplementedError
 
-    def run(self, env='prod', *args, **kwargs):
-        super().run(env, *args, **kwargs)
+    def run(self, *args, **kwargs):
         with get_session() as session:
             max_dt = pd.to_datetime(session.query(
                 sa.func.max(self.model.trade_dt).label('max_dt')
             ).one()[0]) - pd.Timedelta(days=5)
-
-        if max_dt is pd.NaT:
-            max_dt = pd.Timestamp('1990-01-01')
+            if max_dt is pd.NaT:
+                max_dt = pd.Timestamp('1990-01-01')
 
         trade_dates = [i for i in get_dates('D') if max_dt < i <= get_last_td()]
         price = pd.DataFrame()
         for i, dt in enumerate(trade_dates):
+            # in case of data limit out.
             try:
-                # in case of data limit out.
                 price = pd.concat((price, self.get_eod_data(trade_date=f'{dt:%Y%m%d}')), axis=0)
             except Exception as e:
-                self.get_logger().error(f'error happends when run {repr(e)}')
+                self.get_logger().error(f'error happens when run {repr(e)}')
                 break
 
             if price.shape[0] > 10000:
@@ -110,7 +109,7 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
         return price
 
 
-class AShareSuspend(TushareCrawlerJob):
+class AShareSuspend(CrawlerJob):
     """
     Crawling stock suspend info from tushare
     http://tushare.xcsc.com:7173/document/2?doc_id=31
@@ -152,30 +151,22 @@ class AShareSuspend(TushareCrawlerJob):
             data.loc[lambda df: df['suspend_type'].eq(444003000), 'resume_date'] = pd.Timestamp.max
             self.insert_data(records=data, model=model)
 
-        clean_duplicates(model, [model.suspend_date, model.suspend_type, model.wind_code])
+        self.clean_duplicates(model, model.uk.columns)
 
 
-class AShareIndustry(TushareCrawlerJob):
+class AShareIndustry(CrawlerJob):
 
     @property
     def enum_tb(self):
         return others.EnumIndustryCode
 
-    def run(self, env='prod', *args, **kwargs):
-        super().run(env, *args, **kwargs)
-        for code, data in (
-                *self.get_zz_industry(),
-        ):
-            self.insert_data(
-                data, msg=code,
-                model=stock.AShareSector, ukeys=stock.AShareSector.uk_.columns
-            )
+    def run(self, *args, **kwargs):
+        for code, data in (*self.get_zz_industry(),):
+            self.insert_data(data, msg=code, model=stock.AShareSector, ukeys=stock.AShareSector.uk_.columns)
 
     def get_zz_industry(self):
         with get_session() as session:
-            industry_codes = session.query(
-                self.enum_tb.code
-            ).filter(
+            industry_codes = session.query(self.enum_tb.code).filter(
                 self.enum_tb.level_num == 3,
                 sa.func.substr(self.enum_tb.code, 1, 2) == const.SectorEnum.SEC_ZZ.value
             ).all()

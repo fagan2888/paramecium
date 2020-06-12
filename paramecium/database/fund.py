@@ -7,7 +7,7 @@ from functools import lru_cache
 
 import pandas as pd
 
-from ._models import fund
+from .pg_models import fund
 from ._postgres import get_session
 from .comment import get_sector, get_dates
 from .. import const

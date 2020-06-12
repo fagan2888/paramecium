@@ -3,6 +3,8 @@
 @Time: 2020/6/9 11:05
 @Author: Sue Zhu
 """
+__all__ = ['calc_market_factor', 'calc_timing_factor', 'get_index_ff3', 'get_index_bond5']
+
 import pandas as pd
 
 from .comment import get_price, get_risk_free_rates, get_dates, resampler
@@ -27,12 +29,14 @@ def calc_market_factor(code_or_price, calc_freq=const.FreqEnum.W):
         - Bond: CBA00301.CS; h11001.CSI
         - CMoney: h11025.CSI; 885009.WI
 
-    :param code_or_price: str or series
+    :param code_or_price: str or series or dict
     :param calc_freq:
     :return:
     """
     if isinstance(code_or_price, str):
         code_or_price = _get_index_price(code_or_price)
+    elif isinstance(code_or_price, dict):
+        code_or_price = pd.Series(code_or_price)
 
     return _resample_ret(code_or_price, calc_freq).sub(get_risk_free_rates('save', calc_freq)).dropna()
 
@@ -60,15 +64,14 @@ def calc_timing_factor(code_or_price, method='gii', calc_freq=const.FreqEnum.W):
         org_ret = pd.DataFrame({
             'market': _resample_ret(code_or_price, base_freq),
             'rf': get_risk_free_rates('save', base_freq),
-            'label': pd.NaT
-        }).dropna()
-        org_ret.loc[get_dates(calc_freq), 'label'] = get_dates(calc_freq)
-        org_ret.loc[:, 'label'] = org_ret['label'].ffill()
-        timing = org_ret.groupby('label').apply(_unit_gii_factor)
+            'label': get_dates(calc_freq).to_series()
+        })
+        org_ret.loc[:, 'label'] = org_ret['label'].ffill().bfill()
+        timing = org_ret.dropna().groupby('label').apply(_unit_gii_factor)
         return timing
 
     elif method in ('hm', 'tm'):
-        rf = get_risk_free_rates(calc_freq)
+        rf = get_risk_free_rates('save', calc_freq)
         market = _resample_ret(code_or_price, calc_freq)
         net_ret = market.sub(rf).dropna()
         if method == 'hm':
@@ -80,15 +83,20 @@ def calc_timing_factor(code_or_price, method='gii', calc_freq=const.FreqEnum.W):
         raise KeyError(f"Unknown `method` {method}.")
 
 
-def get_index_ff3(calc_freq=const.FreqEnum.W):
-    price = pd.DataFrame({f'{c}{v}': _get_index_price(f'ff3_{c}{v}') for c, v in zip('smb', 'gnv')})
-    ret = _resample_ret(price, calc_freq).iloc[1:]
-    filter_mean = lambda x: ret.filter(regex=x, axis=1).mean(axis=1)
+def get_index_ff3(calc_freq=const.FreqEnum.W, timing=None):
+    market_price = _get_index_price('h00985.CSI')
+
+    box9_price = pd.DataFrame({f'{c}{v}': _get_index_price(f'ff3_{c}{v}') for c, v in zip('smb', 'gnv')})
+    box9_ret = _resample_ret(box9_price, calc_freq).iloc[1:]
+
+    filter_mean = lambda x: box9_ret.filter(regex=x, axis=1).mean(axis=1)
     factors = pd.DataFrame({
-        'market': calc_market_factor(code_or_price='h00985.CSI', calc_freq=calc_freq),
+        'market': calc_market_factor(code_or_price=market_price, calc_freq=calc_freq),
         'smb': filter_mean('s.') - filter_mean('b.'),
         'hml': filter_mean('.v') - filter_mean('.g'),
     }).dropna()
+    if timing:
+        factors['timing'] = calc_timing_factor(market_price, calc_freq=calc_freq, method=timing)
     return factors
 
 
@@ -103,5 +111,5 @@ def get_index_bond5(calc_freq=const.FreqEnum.W):
         'default': _resample_ret(credit_3a, calc_freq) - _resample_ret(high_yield, calc_freq),
         'cmoney': calc_market_factor(code_or_price='h11025.CSI', calc_freq=calc_freq),
         'convert': calc_market_factor(code_or_price='h00906.CSI', calc_freq=calc_freq),
-    })
+    }).dropna()
     return factors

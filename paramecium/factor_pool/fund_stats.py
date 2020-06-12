@@ -3,6 +3,8 @@
 @Time: 2020/6/9 14:27
 @Author: Sue Zhu
 """
+__all__ = ['FundPerform', 'FundRegFF3', 'FundRegBond5']
+
 from functools import partial
 
 import numpy as np
@@ -22,9 +24,12 @@ class _PriceRelated(AbstractFactor):
     start_date = pd.Timestamp('2009-12-31')
     universe = FundUniverse(issue_month=0, size_=0)
 
-    def __init__(self, bk_win, freq=const.FreqEnum.W):
-        self.freq = freq
+    def __init__(self, bk_win, freq='W'):
+        self.freq = const.FreqEnum[freq]
         self.bk_win = bk_win
+
+    def __str__(self):
+        return f'{super().__str__()}(bk_win={self.bk_win}, freq={self.freq.name})'
 
     @property
     def name(self):
@@ -47,7 +52,7 @@ class _PriceRelated(AbstractFactor):
 
 class FundPerform(_PriceRelated):
 
-    def __init__(self, bk_win, freq=const.FreqEnum.W):
+    def __init__(self, bk_win, freq='W'):
         super().__init__(bk_win=bk_win, freq=freq)
         _rf = 0
         _alpha = 0.05
@@ -66,12 +71,12 @@ class FundPerform(_PriceRelated):
         )
 
     @property
-    def field_types(self):
-        return {k: float for k in self.funcs.keys()}
-
-    @property
     def name(self):
         return f'perform_{super().name}'
+
+    @property
+    def field_types(self):
+        return {k: float for k in self.funcs.keys()}
 
     def compute(self, dt):
         fund_ret = self._get_price_pvt(dt, self.bk_win, self.freq)
@@ -85,7 +90,7 @@ class FundPerform(_PriceRelated):
 
 class _Reg(_PriceRelated):
 
-    def __init__(self, bk_win, freq=const.FreqEnum.W):
+    def __init__(self, bk_win, freq='W'):
         super().__init__(bk_win=bk_win, freq=freq)
         self.index_ret = self.get_index_ret()
 
@@ -103,18 +108,29 @@ class _Reg(_PriceRelated):
         if idx.shape[0] < self.bk_win * 0.9:
             return pd.DataFrame(columns=self.field_types.keys())
         else:
-            factor = p_stats.regression(fund_ret, idx)
+            factor = pd.DataFrame(
+                p_stats.regression(fund_ret.values, idx.values),
+                columns=self.field_types.keys(),
+                index=fund_ret.columns
+            )
             return factor
 
 
 class FundRegFF3(_Reg):
 
+    def __init__(self, bk_win, freq='W', timing=None):
+        self.timing = timing
+        super().__init__(bk_win, freq)
+
+    def __str__(self):
+        return f'{super().__str__()[:-1]}, timing={self.timing})'
+
     def get_index_ret(self):
-        return get_index_ff3(calc_freq=self.freq).assign(alpha=1)
+        return get_index_ff3(calc_freq=self.freq, timing=self.timing).assign(alpha=1)
 
     @property
     def name(self):
-        return f'reg_ff3_{super().name}'
+        return f'reg_ff3{"_"+self.timing if self.timing else ""}_{super().name}'
 
 
 class FundRegBond5(_Reg):
