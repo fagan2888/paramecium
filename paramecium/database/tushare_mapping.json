@@ -1,74 +1,140 @@
 {
   "+++++++++++++++++++++ STOCK +++++++++++++++++++++": "",
   "stock_basic": {
-    "name": "short_name",
-    "list_date": "list_dt",
-    "delist_date": "delist_dt",
-    "crncy_code": "currency"
+    "mapping": {
+      "name": "short_name",
+      "list_date": "list_dt",
+      "delist_date": "delist_dt",
+      "crncy_code": "currency"
+    },
+    "dt_col": [
+      "list_date",
+      "delist_date"
+    ]
   },
   "daily": {
-    "trade_date": "trade_dt",
-    "open": "open_",
-    "high": "high_",
-    "low": "low_",
-    "close": "close_",
-    "volume": "volume_",
-    "amount": "amount_"
+    "mapping": {
+      "trade_date": "trade_dt",
+      "open": "open_",
+      "high": "high_",
+      "low": "low_",
+      "close": "close_",
+      "volume": "volume_",
+      "amount": "amount_"
+    },
+    "dt_col": [
+      "trade_dt"
+    ]
   },
   "suspend": {
-    "resump_date": "resume_date",
-    "change_reason_type": "reason_type"
+    "mapping": {
+      "resump_date": "resume_date",
+      "change_reason_type": "reason_type"
+    },
+    "dt_col": [
+      "suspend_date",
+      "resume_date"
+    ]
   },
   "daily_basic": {
-    "trade_date": "trade_dt",
-    "tot_shr": "share_tot",
-    "float_a_shr": "share_float",
-    "free_shares": "share_free",
-    "turn": "turnover",
-    "free_turnover": "turnover_free",
-    "up_down_limit_status": "suspend_status",
-    "net_incr_cash_cash_equ_ttm": "net_increase_cash_equ_ttm",
-    "net_incr_cash_cash_equ_lyr": "net_increase_cash_equ_lyr"
+    "mapping": {
+      "trade_date": "trade_dt",
+      "tot_shr": "share_tot",
+      "float_a_shr": "share_float",
+      "free_shares": "share_free",
+      "turn": "turnover",
+      "free_turnover": "turnover_free",
+      "up_down_limit_status": "suspend_status",
+      "net_incr_cash_cash_equ_ttm": "net_increase_cash_equ_ttm",
+      "net_incr_cash_cash_equ_lyr": "net_increase_cash_equ_lyr"
+    },
+    "dt_col": [
+      "trade_dt"
+    ]
+  },
+  "index_member_zz": {
+    "mapping": {
+      "index_code": "sector_code"
+    },
+    "dt_col": [
+      "entry_dt",
+      "remove_dt"
+    ]
   },
   "+++++++++++++++++++++ FUND +++++++++++++++++++++": "",
   "fund_basic": {
-    "name": "short_name",
-    "fund_type": "invest_type",
-    "found_date": "setup_date",
-    "due_date": "maturity_date",
-    "purc_startdate": "purchase_start_dt",
-    "redm_startdate": "redemption_start_dt",
-    "invest_type": "invest_style",
-    "type": "fund_type",
-    "m_fee": "fee_ratio_manage",
-    "c_fee": "fee_ratio_custodian"
+    "mapping": {
+      "name": "short_name",
+      "fund_type": "invest_type",
+      "found_date": "setup_date",
+      "due_date": "maturity_date",
+      "purc_startdate": "purchase_start_dt",
+      "redm_startdate": "redemption_start_dt",
+      "invest_type": "invest_style",
+      "type": "fund_type",
+      "m_fee": "fee_ratio_manage",
+      "c_fee": "fee_ratio_custodian"
+    },
+    "dt_col": [
+      "setup_date",
+      "maturity_date",
+      "issue_date",
+      "list_date",
+      "delist_date",
+      "purchase_start_dt",
+      "redemption_start_dt"
+    ]
   },
   "fund_nav": {
-    "end_date": "trade_dt",
-    "accum_nav": "acc_nav"
+    "mapping": {
+      "end_date": "trade_dt",
+      "accum_nav": "acc_nav"
+    },
+    "dt_col": [
+      "trade_dt",
+      "ann_date"
+    ]
   },
   "fund_manager": {
-    "ann_date": "ann_date",
-    "name": "manager_name",
-    "begin_date": "start_dt",
-    "end_date": "end_dt"
+    "mapping": {
+      "name": "manager_name",
+      "begin_date": "start_dt",
+      "end_date": "end_dt"
+    },
+    "dt_col": [
+      "ann_date",
+      "start_dt",
+      "end_dt"
+    ]
   },
   "+++++++++++++++++++++ INDEX +++++++++++++++++++++": "",
-  "index_daily": {
-            "trade_date": "trade_dt",
-            "crncy_code": "currency",
-            "open": "open_",
-            "high": "high_",
-            "low": "low_",
-            "close": "close_",
-            "volume": "volume_",
-            "amount": "amount_"
-  },
   "index_basic": {
-            "name": "short_name",
-            "comp_name": "full_name",
-            "index_base_per": "base_date",
-            "index_base_pt": "base_point",
-            "index_weights_rule": "weights_rule"
+    "mapping": {
+      "name": "short_name",
+      "comp_name": "full_name",
+      "index_base_per": "base_date",
+      "index_base_pt": "base_point",
+      "index_weights_rule": "weights_rule"
+    },
+    "dt_col": [
+      "base_date",
+      "list_date",
+      "expire_date"
+    ]
+  },
+  "index_daily": {
+    "mapping": {
+      "trade_date": "trade_dt",
+      "crncy_code": "currency",
+      "open": "open_",
+      "high": "high_",
+      "low": "low_",
+      "close": "close_",
+      "volume": "volume_",
+      "amount": "amount_"
+    },
+    "dt_col": [
+      "trade_dt"
+    ]
   }
 }

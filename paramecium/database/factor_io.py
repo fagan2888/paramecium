@@ -79,16 +79,17 @@ class FactorDBTool(AbstractFactorIO):
                     *(self.table.c[col] for col in (*self._factor.field_types.keys(), 'wind_code'))
                 ).filter(self.table.c.trade_dt == dt).all()
             ).set_index('wind_code')
-        # if snapshot.empty:
-        #     snapshot = self.localized_snapshot(dt, if_exist=1)
         return snapshot
 
-    def _get_calc_dates(self, start, end, freq):
+    def get_calc_dates(self, start, end, freq):
+        # real start date
         if start is None:
             real_start = self._factor.start_date
         else:
             real_start = max((t for t in get_dates(freq) if self._factor.start_date <= t <= pd.Timestamp(start)))
+        # real end date
         real_end = min((get_last_td(), pd.Timestamp(end) if end is not None else pd.Timestamp.max))
+        # final
         return (t for t in get_dates(freq) if real_start <= t <= real_end)
 
     def get_max_date(self):

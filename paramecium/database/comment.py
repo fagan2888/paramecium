@@ -3,21 +3,15 @@
 @Time: 2020/6/7 10:54
 @Author: Sue Zhu
 """
-__all__ = [
-    'get_dates', 'get_last_td', 'resampler',
-    'get_risk_free_rates',
-    'get_price', 'get_sector'
-]
-
 from functools import lru_cache
 
 import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from .pg_models import others
 from ._postgres import get_session, get_or_create_table
 from ._tool import flat_1dim
+from .pg_models import others
 from ..const import FreqEnum, AssetEnum
 
 
@@ -61,6 +55,20 @@ def get_risk_free_rates(type_='save', freq=FreqEnum.D):
     daily_rates = basic_rates.reindex(index=pd.date_range(basic_rates.index[0], pd.Timestamp.now(), freq='D'))
     rf = daily_rates.ffill().bfill().add(1).pow(1 / freq.value).sub(1)
     return rf.filter(items=get_dates(freq))
+
+
+def get_instruments_info(asset: AssetEnum):
+    tb_dict = {
+        AssetEnum.STOCK: 'stock_org_description',
+        AssetEnum.CMF: 'mf_org_description',
+        AssetEnum.INDEX: 'index_org_description',
+    }
+    model = get_or_create_table(name=tb_dict[asset])
+
+    with get_session() as session:
+        data = session.query(*(c for c in model.c if c.key not in ('oid', 'updated_at'))).all()
+
+    return pd.DataFrame(data).fillna(np.nan).set_index('wind_code')
 
 
 def get_price(asset: AssetEnum, start=None, end=None, code=None, fields=None):

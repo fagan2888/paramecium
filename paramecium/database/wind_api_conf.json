@@ -1,0 +1,103 @@
+{
+  "+++++++++++++++++++++ INDEX +++++++++++++++++++++": "",
+  "crawler_index": {
+    "647006000": [
+      "885000.WI",
+      "885001.WI",
+      "885002.WI",
+      "885003.WI",
+      "885004.WI",
+      "885005.WI",
+      "885006.WI",
+      "885007.WI",
+      "885008.WI",
+      "885009.WI",
+      "885012.WI",
+      "885013.WI",
+      "885054.WI",
+      "885061.WI",
+      "885062.WI",
+      "885063.WI",
+      "885064.WI",
+      "885065.WI",
+      "885066.WI",
+      "885067.WI",
+      "885068.WI",
+      "885069.WI",
+      "885070.WI",
+      "930609.CSI",
+      "930610.CSI",
+      "930890.CSI",
+      "930891.CSI",
+      "930892.CSI",
+      "930893.CSI",
+      "930894.CSI",
+      "930897.CSI",
+      "930898.CSI",
+      "930950.CSI",
+      "930994.CSI",
+      "930995.CSI",
+      "931153.CSI",
+      "h11021.CSI",
+      "h11022.CSI",
+      "h11023.CSI",
+      "h11024.CSI",
+      "h11025.CSI",
+      "h11026.CSI",
+      "h11027.CSI",
+      "h11028.CSI"
+    ],
+    "647007000": [
+      "CBA00301.CS",
+      "CBA02501.CS",
+      "CBA03801.CS",
+      "CBA04201.CS",
+      "h11001.CSI",
+      "h11015.CSI"
+    ]
+  },
+  "crawler_index_desc": {
+    "fields": {
+      "SEC_NAME": "short_name",
+      "BASEVALUE": "base_point",
+      "BASEDATE": "base_date",
+      "METHODOLOGY": "weights_rule",
+      "REPO_BRIEFING": "index_intro",
+      "EXCH_ENG": "market",
+      "LAUNCHDATE": "list_date",
+      "DELIST_DATE": "expire_date",
+      "CRM_ISSUER": "publisher"
+    },
+    "dt_cols": [
+      "base_date",
+      "list_date",
+      "expire_date"
+    ]
+  },
+  "crawler_index_price": {
+    "fields": {
+      "OPEN": "open_",
+      "HIGH": "high_",
+      "LOW": "low_",
+      "CLOSE": "close_",
+      "VOLUME": "volume_",
+      "AMT": "amount_",
+      "CURR": "currency"
+    }
+  },
+  "+++++++++++++++++++++ FUND +++++++++++++++++++++": "",
+  "crawler_mf_desc": {
+    "fields": {
+      "CURR": "currency",
+      "FUND_PCHREDM_PCHMINAMT": "min_purchase_amt",
+      "EXCH_ENG": "exchange",
+      "FUND_INITIAL": "is_initial",
+      "FUND_INVESTSCOPE": "invest_scope",
+      "FUND_INVESTOBJECT": "invest_object",
+      "FUND_SALEFEERATIO": "fee_ratio_sale",
+      "FUND_FULLNAME": "full_name",
+      "FUND_SMFTYPE": "grad_type",
+      "FUND_ETFWINDCODE": "etf_code"
+    }
+  }
+}

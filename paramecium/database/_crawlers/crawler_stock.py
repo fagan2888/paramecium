@@ -9,9 +9,8 @@ import pandas as pd
 import sqlalchemy as sa
 
 from .._postgres import get_session
-from .._tool import get_type_codes
 from ..comment import get_last_td, get_dates
-from ..pg_models import index, stock, others
+from ..pg_models import stock, others
 from ._base import CrawlerJob
 from ... import const
 
@@ -25,9 +24,7 @@ class AShareDescription(CrawlerJob):
     def run(self, *args, **kwargs):
         model = stock.AShareDescription
         stock_info = pd.concat((
-            self.get_tushare_data(
-                api_name='stock_basic', exchange=exchange, date_cols=['list_dt', 'delist_dt']
-            ) for exchange in ('SSE', 'SZSE')
+            self.get_tushare_data(api_name='stock_basic', exchange=exchange) for exchange in ('SSE', 'SZSE')
         )).filter(model.__dict__.keys(), axis=1)
         stock_info.loc[lambda df: df['list_dt'].notnull() & df['delist_dt'].isnull(), 'delist_dt'] = pd.Timestamp.max
 
@@ -81,10 +78,7 @@ class ASharePrice(_CrawlerEOD):
 
     def get_eod_data(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
-        price = self.get_tushare_data(
-            api_name='daily', date_cols=['trade_date'],
-            fields=['adj_factor', 'avg_price', 'trade_status'], **func_kwargs
-        )
+        price = self.get_tushare_data(api_name='daily', **func_kwargs).filter(self.model.__dict__.keys(), axis=1)
         price.loc[:, 'trade_status'] = price['trade_status'].map({
             **const.TradeStatus.items(), '停牌': 0, '交易': -1, '待核查': -2,
         }).fillna(-2).astype(int)
@@ -103,10 +97,8 @@ class AShareEODDerivativeIndicator(_CrawlerEOD):
 
     def get_eod_data(self, **func_kwargs):
         self.get_logger().info(f'getting data from tushare: {func_kwargs}.')
-        price = super().get_tushare_data(
-            api_name='daily_basic', date_cols=['trade_date'], **func_kwargs
-        ).filter(self.model.__dict__.keys(), axis=1)
-        return price
+        price = super().get_tushare_data(api_name='daily_basic', **func_kwargs)
+        return price.filter(self.model.__dict__.keys(), axis=1)
 
 
 class AShareSuspend(CrawlerJob):
@@ -116,9 +108,7 @@ class AShareSuspend(CrawlerJob):
     """
 
     def get_tushare_data(self, **func_kwargs):
-        data = super().get_tushare_data(
-            api_name='suspend', date_cols=['suspend_date', 'resump_date'], **func_kwargs
-        )
+        data = super().get_tushare_data(api_name='suspend', **func_kwargs)
         data.loc[lambda df: df['suspend_type'].eq(444003000), 'resume_date'] = pd.Timestamp.max
         return data
 
@@ -145,9 +135,7 @@ class AShareSuspend(CrawlerJob):
                 ))
 
         for q in query_params:
-            data = self.get_tushare_data(
-                api_name='suspend', date_cols=['suspend_date', 'resump_date'], **q
-            )
+            data = self.get_tushare_data(api_name='suspend', **q)
             data.loc[lambda df: df['suspend_type'].eq(444003000), 'resume_date'] = pd.Timestamp.max
             self.insert_data(records=data, model=model)
 
@@ -173,10 +161,7 @@ class AShareIndustry(CrawlerJob):
 
         for (code,) in industry_codes:
             data = self.get_tushare_data(
-                api_name='index_member_zz',
-                date_cols=['entry_dt', 'remove_dt'],
-                col_mapping={'ts_code': 'wind_code', 'index_code': 'sector_code'},
-                index_code=code
+                api_name='index_member_zz', index_code=code
             ).drop('is_new', axis=1, errors='ignore').fillna({'remove_dt': pd.Timestamp.max})
             yield code, data
 

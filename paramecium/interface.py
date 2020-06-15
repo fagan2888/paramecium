@@ -58,7 +58,7 @@ class AbstractFactor(metaclass=abc.ABCMeta):
 
 class AbstractFactorIO(metaclass=abc.ABCMeta):
 
-    def __init__(self, factor: 'AbstractFactor', *args, **kwargs):
+    def __init__(self, factor: AbstractFactor, *args, **kwargs):
         self._factor = factor
 
     @property
@@ -69,6 +69,7 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
     def localized_snapshot(self, dt, if_exist=1):
         """
         计算并保存截面数据
+
         :param dt: pd.Timestamp
         :param if_exist: {1: replace, 0: error}, 由于因子在截面上有相关性，不考虑update部分的情况
         :return:
@@ -79,15 +80,17 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
     def fetch_snapshot(self, dt):
         """
         读取截面数据
+
         :param dt: pd.Timestamp
         :return:
         """
         return ()
 
     @abc.abstractmethod
-    def _get_calc_dates(self, start, end, freq):
+    def get_calc_dates(self, start, end, freq):
         """
         日期序列
+
         :param start: pd.Timestamp
         :param end: pd.Timestamp or None
         :param freq: FreqEnum
@@ -96,5 +99,5 @@ class AbstractFactorIO(metaclass=abc.ABCMeta):
         return ()
 
     def localized_time_series(self, start=None, end=None, freq=FreqEnum.M, if_exist=1):
-        for t in self._get_calc_dates(start, end, freq):
+        for t in self.get_calc_dates(start, end, freq):
             self.localized_snapshot(t, if_exist)

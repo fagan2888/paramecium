@@ -68,20 +68,28 @@ def conditional_var(returns, alpha=0.05):
     return np.nanmean(np.where(returns - var < 0, returns, np.nan), axis=0)
 
 
-def regression(returns, factors):
+def regression(returns, factors, sample_weight=None):
     """
     Regression function directly use numpy function. maybe add a weight param later.
     :param returns: returns array with n sample and k portfolio.
     :param factors: returns array with n sample and k factor.
+    :param w_diag: n*1 array
     :return:
     """
-    cov_inv = np.linalg.pinv(factors.T @ factors)
-    beta = cov_inv @ factors.T @ returns
-    rss = np.sum(np.square(returns - factors @ beta), axis=0, keepdims=True)
+    if sample_weight is None:
+        w_diag = np.eye(factors.shape[0])
+    else:
+        w_diag = np.diag(sample_weight)
+
+    cov_inv = np.linalg.pinv(factors.T @ w_diag @ factors)
+    beta = cov_inv @ factors.T @ w_diag @ returns
+    diff_numerator = returns - factors @ beta
+    rss = diff_numerator.T @ w_diag @ diff_numerator
     n, k = factors.shape
     beta_stand_error = np.sqrt(rss.T @ cov_inv.diagonal().reshape((1, -1)) / (n - k))
     t_value = np.divide(beta.T, beta_stand_error)
 
-    tss = np.sum(np.square(returns - np.mean(returns, axis=0)), axis=0, keepdims=True)
+    diff_denominator = returns - np.mean(returns, axis=0)
+    tss = diff_denominator.T @ w_diag @ diff_denominator
     r2_value = 1 - np.divide(rss, tss)
     return np.hstack([beta.T, t_value, r2_value.T])

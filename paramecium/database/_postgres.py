@@ -88,6 +88,7 @@ def create_all_table():
 
     # create some view for query.
     with get_session() as session:
+        try_commit(session, 'create instruments view')
         session.execute(
             f"""
             create or replace view index_price as

@@ -5,198 +5,159 @@
 """
 import pandas as pd
 import sqlalchemy as sa
+from sqlalchemy.orm import Query
 
+from ._base import CrawlerJob
 from .._postgres import get_session
+from .._third_party_api import get_wind_conf
 from .._tool import get_type_codes
 from ..comment import get_last_td
 from ..pg_models import index
-from ._base import CrawlerJob
+from ...utils import chunk
 
 
-class IndexDescFromTS(CrawlerJob):
+class IndexDescription(CrawlerJob):
     """
-    Crawling index description from tushare
-    http://tushare.xcsc.com:7173/document/2?doc_id=94
+    Crawling index description
+        1. from tushare, mainly a share index
+        http://tushare.xcsc.com:7173/document/2?doc_id=94
+        2. wind api
+        bond and fund index not available from tushare, conf key `crawler_index_desc`
     """
 
-    def run(self, env='prod', *args, **kwargs):
-        super().run(env, *args, **kwargs)
+    def run(self, *args, **kwargs):
         types = get_type_codes('index_org_description')
 
+        self.get_logger().info('Localized from tushare api')
         types['publisher'].pop('WIND')
         for idx_type in types['index_code'].keys():
-            self.get_and_insert_data(market='WIND', category=idx_type)
+            self.get_and_insert_ts(market='WIND', category=idx_type)
 
         for pub in types['publisher'].keys():
-            self.get_and_insert_data(market=pub)
+            self.get_and_insert_ts(market=pub)
 
-    def get_and_insert_data(self, **func_kwargs):
+        self.get_logger().info('Localized from wind api')
+        w_conf = get_wind_conf('crawler_index_desc')
+        chunk_size = 8000 // len(w_conf['fields'].keys())  # wss限8000单元格
+        codes = {c: tp for tp, c_list in get_wind_conf('crawler_index') for c in c_list}
+        for codes in chunk(codes.keys(), chunk_size):
+            desc = self.query_wind(
+                api_name='wss', codes=codes, fields=list(w_conf['fields'].keys()),
+                col_mapping=w_conf['fields'], dt_cols=w_conf['dt_cols']
+            ).assign(localized=-1)
+            desc['index_code'] = desc['wind_code'].map(codes)
+            self.insert_data(records=desc, model=index.Description, ukeys=index.Description.get_primary_key())
+
+    def get_and_insert_ts(self, **func_kwargs):
         data = self.get_tushare_data(
             api_name='index_basic',
-            date_cols=['index_base_per', 'list_date', 'expire_date'],
-            fields=['market', 'list_date', 'index_code', 'publisher', 'index_style',
-                    'index_intro', 'weight_type', 'expire_date', 'income_processing_method', 'change_history'],
             **func_kwargs
-        )
+        ).filter(index.Description.__dict__.keys(), axis=1)
         data.loc[:, 'index_code'] = data['index_code'].dropna().map(lambda x: f'{x:.0f}')
         data = data.fillna({'index_code': '647000000', 'expire_date': pd.Timestamp.max})
         self.insert_data(data, index.Description, index.Description.get_primary_key(), func_kwargs)
 
 
-class IndexDescWind(CrawlerJob):
-    """
-    Crawler Index data from wind api
-    """
-    codes = {
-        '647006000': [
-            '885000.WI', '885001.WI', '885002.WI', '885003.WI', '885004.WI', '885005.WI', '885006.WI', '885007.WI',
-            '885008.WI', '885009.WI', '885012.WI', '885013.WI', '885054.WI', '885061.WI', '885062.WI', '885063.WI',
-            '885064.WI', '885065.WI', '885066.WI', '885067.WI', '885068.WI', '885069.WI', '885070.WI', '930609.CSI',
-            '930610.CSI', '930890.CSI', '930891.CSI', '930892.CSI', '930893.CSI', '930894.CSI', '930897.CSI',
-            '930898.CSI', '930950.CSI', '930994.CSI', '930995.CSI', '931153.CSI', 'h11021.CSI', 'h11022.CSI',
-            'h11023.CSI', 'h11024.CSI', 'h11025.CSI', 'h11026.CSI', 'h11027.CSI', 'h11028.CSI'],
-        '647007000': [
-            'CBA00301.CS', 'CBA02501.CS', 'CBA03801.CS', 'CBA04201.CS', 'h11001.CSI', 'h11015.CSI', ]
-    }
-
-    def run(self):
-        desc_mp = {
-            'SEC_NAME': 'short_name',
-            'BASEVALUE': 'base_point',
-            'BASEDATE': 'base_date',
-            'METHODOLOGY': 'weights_rule',
-            'REPO_BRIEFING': 'index_intro',
-            'EXCH_ENG': 'market',
-            'LAUNCHDATE': 'list_date',
-            'DELIST_DATE': 'expire_date',
-            'CRM_ISSUER': 'publisher'
-        }
-        price_mp = {
-            'OPEN': 'open_',
-            'HIGH': 'high_',
-            'LOW': 'low_',
-            'CLOSE': 'close_',
-            'VOLUME': 'volume_',
-            'AMT': 'amount_',
-            'CURR': 'currency'
-        }
-        for type_code, idx_codes in self.codes.items():
-            # wss限8000单元格
-            desc = self.query_wind(
-                api_name='wss', codes=idx_codes, fields=list(desc_mp.keys()),
-                col_mapping=desc_mp, date_cols=['base_date', 'list_date', 'expire_date']
-            )
-            self.insert_data(records=desc, model=index.Description, ukeys=index.Description.get_primary_key())
-
-            with get_session() as ss:
-                desc_loc = desc.set_index('wind_code').assign(
-                    max_price=pd.to_datetime(
-                        pd.DataFrame(
-                            ss.query(
-                                index.EODPrice.wind_code,
-                                sa.func.max(index.EODPrice.trade_dt).label('max_dt')
-                            ).group_by(index.EODPrice.wind_code).filter(
-                                index.EODPrice.wind_code.in_(desc['wind_code'])
-                            ).all(),
-                            columns=['wind_code', 'max_dt'],
-                        ).set_index('wind_code').squeeze()
-                    )
-                )
-                max_dt = desc_loc.loc[:, ['base_date', 'max_price']].max(axis=1).loc[lambda ser: ser < get_last_td()]
-
-            for code, start in max_dt.items():
-                for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq='1000D'):  # wsd限8000单元格
-                    price = self.query_wind(
-                        api_name='wsd', codes=code, fields=[*price_mp.keys()],
-                        beginTim=dt, endTime=max((dt + pd.Timedelta(days=1000), get_last_td())), options="",
-                        col_mapping=price_mp
-                    ).dropna(subset=['close_'])
-                    self.insert_data(price.assign(
-                        wind_code=code, trade_dt=pd.to_datetime(price.index)
-                    ), index.EODPrice, msg=f'{code} - {dt:%Y%m%d}')
-
-        self.clean_duplicates(
-            index.EODPrice,
-            [index.EODPrice.wind_code, index.EODPrice.trade_dt]
-        )
-
-
-class IndexPriceFromTS(CrawlerJob):
+class IndexPrice(CrawlerJob):
     """
     Crawling index description from tushare
     http://tushare.xcsc.com:7173/document/2?doc_id=95
     """
+    ts_limit = 2999
 
     def run(self, check_new=1, *args, **kwargs):
-        self.get_logger().debug('localize listed code first.')
+        self.get_logger().debug('localize wind api')
         with get_session() as ss:
-            code_list = pd.read_sql(
-                """
-                select
-                    d.wind_code, d.base_date, max(iop.trade_dt) as max_dt
-                from index_org_description d
-                    left join index_org_price iop on d.wind_code = iop.wind_code
-                where localized=1
-                group by d.wind_code
-                """,
-                ss.bind, parse_dates=['base_date', 'max_dt'],
-                index_col=['wind_code']
-            )
-            code_list = code_list.max(axis=1).loc[lambda ser: ser < get_last_td()]
+            price_group = Query([
+                index.EODPrice.wind_code,
+                sa.func.max(index.EODPrice.trade_dt).label('max_dt')
+            ]).group_by(
+                index.EODPrice.wind_code
+            ).subquery('g')
+            desc = pd.DataFrame(
+                ss.query(
+                    index.Description.wind_code,
+                    index.Description.base_date,
+                    price_group.c.max_dt,
+                    index.Description.localized
+                ).join(
+                    price_group,
+                    index.Description.wind_code == price_group.c.wind_code,
+                    isouter=True  # left join
+                ).all()
+            ).set_index('wind_code')
+            desc['max_dt'] = desc.loc[:, ['base_date', 'max_dt']].apply(pd.to_datetime).max(axis=1)
+            desc = desc.loc[lambda df: df['max_dt'] < get_last_td()]
 
-        for code, start in code_list.items():
+        self.get_logger().debug('localize wind api')
+        codes = [c for _, c_list in get_wind_conf('crawler_index') for c in c_list]
+        w_conf = {k.upper(): v for k, v in get_wind_conf('crawler_index_desc')['fields'].items()}
+        for code, start in desc.filter(codes, axis=0)['max_dt'].items():
+            for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq='1000D'):  # wsd限8000单元格
+                price = self.query_wind(
+                    api_name='wsd', codes=code, fields=[*w_conf.keys()],
+                    beginTim=dt, endTime=max((dt + pd.Timedelta(days=1000), get_last_td())),
+                    options="", col_mapping=w_conf
+                ).dropna(subset=['close_'])
+                self.insert_data(price.assign(
+                    wind_code=code, trade_dt=pd.to_datetime(price.index)
+                ), index.EODPrice, msg=f'{code} - {dt:%Y%m%d}')
+
+        self.get_logger().debug('localize listed ts code.')
+        for code, start in desc.loc[desc['localized'].eq(1), 'max_dt'].items():
             try:
-                for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq='3000D'):
-                    self.localized_eod_data(
-                        ts_code=code, start_date=dt.strftime('%Y%m%d'),
-                        end_date=min((dt + pd.Timedelta(days=2999), get_last_td())).strftime('%Y%m%d')
-                    )
+                for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq=f'{self.ts_limit}D'):
+                    self.localized_ts(ts_code=code, start_date=dt.strftime('%Y%m%d'))
             except Exception as e:
                 self.get_logger().error(repr(e))
                 break
 
         if check_new:
             self.get_logger().debug('check new code.')
-            # TODO
+            with get_session() as ss:
+                index_codes = ss.query(
+                    index.Description.wind_code,
+                    index.Description.base_date
+                ).filter(
+                    index.Description.expire_date > sa.func.current_date(),
+                    index.Description.index_code.in_([
+                        "647000000", "647002000", "647002001", "647002002", "647002003", "647002004",  # "行业指数",
+                        "647003000", "647004000", "647004001", "647004002", "647005000", "647001000", ]),
+                    index.Description.localized == 0,
+                ).all()
+
+                has_price = []
+                no_price = []
+                for (code, base_dt) in index_codes:
+                    try:
+                        for dt in pd.date_range(base_dt, pd.Timestamp.now(), freq=f'{self.ts_limit}D'):
+                            ts_price = self.localized_ts(ts_code=code, start_date=dt.strftime('%Y%m%d'))
+                            if ts_price.empty:
+                                no_price.append(code)
+                                break
+                        else:
+                            has_price.append(code)
+                    except Exception as e:
+                        self.get_logger().error(repr(e))
+                        break
+
+                ss.query(index.Description).filter(
+                    index.Description.wind_code.in_(has_price)
+                ).update(dict(localized=1, updated_at=sa.func.current_timestamp()), synchronize_session='fetch')
+                ss.query(index.Description).filter(
+                    index.Description.wind_code.in_(no_price)
+                ).update(dict(localized=-1, updated_at=sa.func.current_timestamp()), synchronize_session='fetch')
 
         self.clean_duplicates(
             index.EODPrice,
             [index.EODPrice.wind_code, index.EODPrice.trade_dt]
         )
 
-    def localized_eod_data(self, **kwargs):
+    def localized_ts(self, ts_code, start_date):
         data = self.get_tushare_data(
-            api_name='index_daily', date_cols=['trade_date'], **kwargs
+            api_name='index_daily',
+            ts_code=ts_code, start_date=start_date.strftime('%Y%m%d'),
+            end_date=min((start_date + pd.Timedelta(days=self.ts_limit), get_last_td())).strftime('%Y%m%d')
         ).filter(index.EODPrice.__dict__.keys(), axis=1)
         self.insert_data(records=data, model=index.EODPrice)
-
-    # def get_price_code(self):
-    #     model = index.Description
-    #     with get_session() as ss:
-    #         index_codes = ss.query(model.wind_code).filter(
-    #             model.expire_date > sa.func.current_date(),
-    #             model.index_code.in_([
-    #                 "647000000", "647002000", "647002001", "647002002",  # "647002003", "647002004", # "行业指数",
-    #                 "647003000", "647004000", "647004001", "647004002", "647005000", "647001000", ]),
-    #             model.localized == 0,
-    #         ).all()
-    #
-    #         has_price = []
-    #         no_price = []
-    #         for (code,) in index_codes:
-    #             try:
-    #                 data = self.get_tushare_data(api_name='index_daily', ts_code=code)
-    #                 if data.empty:
-    #                     no_price.append(code)
-    #                 else:
-    #                     has_price.append(code)
-    #             except Exception as e:
-    #                 self.get_logger().error(repr(e))
-    #                 break
-    #
-    #         ss.query(model).filter(
-    #             model.wind_code.in_(has_price)
-    #         ).update(dict(localized=1, updated_at=sa.func.current_timestamp()), synchronize_session='fetch')
-    #         ss.query(model).filter(
-    #             model.wind_code.in_(no_price)
-    #         ).update(dict(localized=-1, updated_at=sa.func.current_timestamp()), synchronize_session='fetch')
+        return data

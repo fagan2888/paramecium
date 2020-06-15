@@ -18,11 +18,14 @@ from ..interface import AbstractFactor
 from ..utils import price_stats as p_stats
 
 
-class _PriceRelated(AbstractFactor):
+class _RetFactor(AbstractFactor):
+    """
+    收益率相关因子抽象类
+    """
     asset_type = const.AssetEnum.CMF
-    std_limit = 1e-8
+    std_limit = 1e-8  # 去除净值为一条线的情况
     start_date = pd.Timestamp('2009-12-31')
-    universe = FundUniverse(issue_month=0, size_=0)
+    universe = FundUniverse(issue_month=0, size_=0)  # 初始条件较为宽松，防止因子覆盖率过低
 
     def __init__(self, bk_win, freq='W'):
         self.freq = const.FreqEnum[freq]
@@ -50,7 +53,7 @@ class _PriceRelated(AbstractFactor):
         return ret
 
 
-class FundPerform(_PriceRelated):
+class FundPerform(_RetFactor):
 
     def __init__(self, bk_win, freq='W'):
         super().__init__(bk_win=bk_win, freq=freq)
@@ -88,7 +91,7 @@ class FundPerform(_PriceRelated):
         return factor
 
 
-class _Reg(_PriceRelated):
+class _Reg(_RetFactor):
 
     def __init__(self, bk_win, freq='W'):
         super().__init__(bk_win=bk_win, freq=freq)

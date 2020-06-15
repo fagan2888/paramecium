@@ -9,10 +9,11 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
+from ._base import CrawlerJob
 from .._postgres import get_session
+from .._third_party_api import get_wind_conf
 from ..comment import get_dates, get_last_td
 from ..pg_models import fund
-from ._base import CrawlerJob
 from ... import const, utils
 
 
@@ -20,29 +21,10 @@ class FundDescription(CrawlerJob):
     """
     Crawler fund descriptions from tushare
     """
-    w_info = {
-        'CURR': 'currency',
-        'FUND_PCHREDM_PCHMINAMT': 'min_purchase_amt',
-        'EXCH_ENG': 'exchange',
-        'FUND_INITIAL': 'is_initial',
-        'FUND_INVESTSCOPE': 'invest_scope',
-        'FUND_INVESTOBJECT': 'invest_object',
-        'FUND_SALEFEERATIO': 'fee_ratio_sale',
-        'FUND_FULLNAME': 'full_name',
-        'FUND_SMFTYPE': 'grad_type',
-        'FUND_ETFWINDCODE': 'etf_code'
-    }
 
-    @staticmethod
-    def wind2ts(codes):
-        return codes.str.replace('!', '')
-
-    def get_wind_info(self, funds, w):
-        err, desc = w.wss(funds, [*self.w_info.keys()], usedf=True)
-        if err:
-            self.get_logger().error(f'Wind API has error {err}')
-        else:
-            return desc.rename(columns=self.w_info)
+    @property
+    def w_info(self):
+        return get_wind_conf('crawler_mf_desc')['fields']
 
     def run(self, *args, **kwargs):
         model = fund.Description
@@ -63,26 +45,21 @@ class FundDescription(CrawlerJob):
 
         self.get_logger().debug('getting description from tushare')
         ts_desc = pd.concat(
-            (self.get_tushare_data(
-                api_name='fund_basic', market=m,
-                date_cols=['found_date', 'due_date', 'issue_date', 'list_date', 'delist_date',
-                           'purc_startdate', 'redm_startdate']
-            ) for m in list('OE')),
+            (self.get_tushare_data(api_name='fund_basic', market=m) for m in list('OE')),
             axis=0, sort=False
         ).set_index('wind_code').filter(model.__dict__.keys(), axis=1)
         ts_desc.loc[
             lambda df: df['setup_date'].notnull() & df['maturity_date'].isnull(), 'maturity_date'] = pd.Timestamp.max
 
         self.get_logger().debug('merge wind and tushare data.')
-
         suffix = {k: v for k, v in ts_desc.index.str.split('.') if v != 'OF'}
+
         def _func(code):
             pre, ex = code.split('.')
             return '.'.join((pre, suffix.get(pre.replace('!', ''), ex)))
 
         w_desc['wind_code'] = w_desc.index.map(_func)
         w_desc.index = w_desc['wind_code'].map(lambda x: x.replace('!', ''))
-
         desc = pd.concat((
             w_desc.drop(['grad_type', 'etf_code'], axis=1, errors='ignore'),
             ts_desc
@@ -162,13 +139,14 @@ class FundNav(CrawlerJob):
                     from mf_org_description d 
                     left join (select wind_code, max(trade_dt) as max_dt from mf_org_nav group by wind_code) p 
                     on d.wind_code=p.wind_code
+                    where d.setup_date>'1990-01-01'
+                    and status <> 'L'
                 ) t             
                 where 
-                    t.max_dt < t.maturity_date
-                    and t.setup_date > date('1900-01-01')
+                    t.maturity_date - t.max_dt > -5
                 """,
                 session.bind, parse_dates=['max_dt'], index_col=['wind_code']
-            ).squeeze().loc[lambda ser: ser.index.str.len() < 10]
+            ).squeeze().loc[lambda ser: (ser.index.str.len() < 10) & (ser < get_last_td())]
         max_dts -= pd.Timedelta(days=7)
 
         nav = pd.DataFrame()
@@ -177,7 +155,7 @@ class FundNav(CrawlerJob):
                 self.get_logger().info(f'getting {code} nav from tushare')
                 nav = pd.concat((
                     nav,
-                    self.get_tushare_data(api_name='fund_nav', ts_code=code, date_cols=['end_date', 'ann_date'])
+                    self.get_tushare_data(api_name='fund_nav', ts_code=code)
                 ), axis=0).loc[lambda df: df['trade_dt'] >= dt]
             except Exception as e:
                 self.get_logger().error(f'error happends when run {repr(e)}')
@@ -187,10 +165,7 @@ class FundNav(CrawlerJob):
                 nav = self.insert_nav(nav, i / max_dts.shape[0])
 
         self.insert_nav(nav, 1)
-        self.clean_duplicates(
-            fund.Nav,
-            [fund.Nav.wind_code, fund.Nav.trade_dt]
-        )
+        self.clean_duplicates(fund.Nav, [fund.Nav.wind_code, fund.Nav.trade_dt])
 
     def insert_nav(self, nav, pct):
         nav['adj_factor'] = nav['adj_nav'].div(nav['unit_nav']).round(6)
@@ -215,7 +190,7 @@ class FundManager(CrawlerJob):
         for funds in utils.chunk(fund_list, 100):
             managers = self.get_tushare_data(
                 api_name='fund_manager', ts_code=','.join(funds),
-                date_cols=['ann_date', 'begin_date', 'end_date'], fields=['ann_date'],
+                fields=['wind_code', 'ann_date', 'manager_name', 'start_dt', 'end_dt'],
             ).fillna({
                 'start_dt': pd.Timestamp.min,
                 'end_dt': pd.Timestamp.max,
