@@ -35,6 +35,6 @@ def single_factor_analysis(factor: AbstractFactor, transformers=None,
     ret = adj_price.pct_change(1, limit=1).slice_shift(-shift).iloc[:-shift]
     factor_val = {t: factor_io.fetch_snapshot(t) for t in dates[:-shift]}
 
-    for t in dates[:-shift]:
-        # ic
-        snapshot_ic = factor_val[t]
+    for t, val in factor_val.items():
+        # 描述性统计
+        val.describe()

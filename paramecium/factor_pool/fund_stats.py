@@ -25,11 +25,14 @@ class _RetFactor(AbstractFactor):
     asset_type = const.AssetEnum.CMF
     std_limit = 1e-8  # 去除净值为一条线的情况
     start_date = pd.Timestamp('2009-12-31')
-    universe = FundUniverse(issue_month=0, size_=0)  # 初始条件较为宽松，防止因子覆盖率过低
 
     def __init__(self, bk_win, freq='W'):
         self.freq = const.FreqEnum[freq]
         self.bk_win = bk_win
+        self.universe = FundUniverse(
+            issue=int(250 / self.freq.value * self.bk_win) + 63,  # 考虑到至少三个月建仓期
+            size_=0  # 初始条件较为宽松，防止因子覆盖率过低
+        )
 
     def __str__(self):
         return f'{super().__str__()}(bk_win={self.bk_win}, freq={self.freq.name})'
@@ -38,18 +41,17 @@ class _RetFactor(AbstractFactor):
     def name(self):
         return self.freq.name.lower() + (f'{self.bk_win:03d}' if self.bk_win else "_itd")
 
-    @classmethod
-    def _get_price_pvt(cls, dt, bk_win=None, freq=const.FreqEnum.W):
+    def _get_price_pvt(self, dt, bk_win=None, freq=const.FreqEnum.W):
         dates = [t for t in get_dates(freq) if t <= dt]
-        funds = cls.universe.get_instruments(dt)
+        funds = self.universe.get_instruments(dt)
 
-        price = get_price(cls.asset_type, start=dates[-bk_win - 1], end=dt)
+        price = get_price(self.asset_type, start=dates[-bk_win - 1], end=dt)
         price['adj_nav'] = price['unit_nav'] * price['adj_factor']
         price_pvt = price.pivot('trade_dt', 'wind_code', 'adj_nav').filter(dates, axis=0).filter(funds, axis=1)
         ret = price_pvt.pct_change(1, limit=1).iloc[1:].where(lambda df: df.ne(0))
         if bk_win is not None:
             ret = ret.dropna(thresh=round(bk_win * 0.8), axis=1)
-        ret = ret.loc[:, ret.std().gt(cls.std_limit) & ret.abs().max().le(1.1 ** (250 / freq.value) - 1)]
+        ret = ret.loc[:, ret.std().gt(self.std_limit) & ret.abs().max().le(1.1 ** (250 / freq.value) - 1)]
         return ret
 
 
@@ -111,12 +113,13 @@ class _Reg(_RetFactor):
         if idx.shape[0] < self.bk_win * 0.9:
             return pd.DataFrame(columns=self.field_types.keys())
         else:
+            reg = p_stats.regression(fund_ret.values, idx.values)
             factor = pd.DataFrame(
-                p_stats.regression(fund_ret.values, idx.values),
+                np.hstack([reg.beta, reg.t_value, reg.r2]),
                 columns=self.field_types.keys(),
                 index=fund_ret.columns
             )
-            return factor
+            return factor.round(8)
 
 
 class FundRegFF3(_Reg):
@@ -133,7 +136,7 @@ class FundRegFF3(_Reg):
 
     @property
     def name(self):
-        return f'reg_ff3{"_"+self.timing if self.timing else ""}_{super().name}'
+        return f'reg_ff3{"_" + self.timing if self.timing else ""}_{super().name}'
 
 
 class FundRegBond5(_Reg):

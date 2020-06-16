@@ -6,6 +6,8 @@
 Utility functions use for portfolio return analysis.
 All use numpy to speed up.
 """
+from dataclasses import dataclass
+
 import numpy as np
 
 
@@ -68,6 +70,13 @@ def conditional_var(returns, alpha=0.05):
     return np.nanmean(np.where(returns - var < 0, returns, np.nan), axis=0)
 
 
+@dataclass
+class RegressionResult(object):
+    beta: np.array
+    t_value: np.array
+    r2: np.array
+
+
 def regression(returns, factors, sample_weight=None):
     """
     Regression function directly use numpy function. maybe add a weight param later.
@@ -83,13 +92,12 @@ def regression(returns, factors, sample_weight=None):
 
     cov_inv = np.linalg.pinv(factors.T @ w_diag @ factors)
     beta = cov_inv @ factors.T @ w_diag @ returns
-    diff_numerator = returns - factors @ beta
-    rss = diff_numerator.T @ w_diag @ diff_numerator
+    rss = np.sum(w_diag @ np.square(returns - factors @ beta), axis=0, keepdims=True)
     n, k = factors.shape
     beta_stand_error = np.sqrt(rss.T @ cov_inv.diagonal().reshape((1, -1)) / (n - k))
     t_value = np.divide(beta.T, beta_stand_error)
 
-    diff_denominator = returns - np.mean(returns, axis=0)
-    tss = diff_denominator.T @ w_diag @ diff_denominator
+    weight_true = np.average(returns, weights=w_diag.diagonal(), axis=0)
+    tss = np.sum(w_diag @ np.square(returns - weight_true), axis=0, keepdims=True)
     r2_value = 1 - np.divide(rss, tss)
-    return np.hstack([beta.T, t_value, r2_value.T])
+    return RegressionResult(beta=beta.T, t_value=t_value, r2=r2_value.T)

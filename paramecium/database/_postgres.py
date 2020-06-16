@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 
 def _df2list(raw_data):
     if isinstance(raw_data, pd.DataFrame):
-        return [record.dropna().to_dict() for _, record in raw_data.iterrows()]
+        # return [record.dropna().to_dict() for _, record in raw_data.iterrows()]
+        return [record.to_dict() for _, record in raw_data.fillna(sa.null()).iterrows()]
     else:
         return raw_data
 
@@ -82,7 +83,7 @@ def get_session():
 
 
 def create_all_table():
-    # from .pg_models import stock, fund, index, monitors, others
+    from .pg_models import stock, fund, index, monitors, others
     logger.info('creating all sqlalchemy data models')
     BaseORM.metadata.create_all(get_sql_engine())
 

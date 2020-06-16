@@ -90,7 +90,7 @@ class IndexPrice(CrawlerJob):
             desc = desc.loc[lambda df: df['max_dt'] < get_last_td()]
 
         self.get_logger().debug('localize wind api')
-        codes = [c for _, c_list in get_wind_conf('crawler_index') for c in c_list]
+        codes = [c for _, c_list in get_wind_conf('crawler_index').items() for c in c_list]
         w_conf = {k.upper(): v for k, v in get_wind_conf('crawler_index_desc')['fields'].items()}
         for code, start in desc.filter(codes, axis=0)['max_dt'].items():
             for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq='1000D'):  # wsd限8000单元格

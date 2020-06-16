@@ -5,6 +5,8 @@
 """
 __all__ = ['calc_market_factor', 'calc_timing_factor', 'get_index_ff3', 'get_index_bond5']
 
+from itertools import product
+
 import pandas as pd
 
 from .comment import get_price, get_risk_free_rates, get_dates, resampler
@@ -86,7 +88,7 @@ def calc_timing_factor(code_or_price, method='gii', calc_freq=const.FreqEnum.W):
 def get_index_ff3(calc_freq=const.FreqEnum.W, timing=None):
     market_price = _get_index_price('h00985.CSI')
 
-    box9_price = pd.DataFrame({f'{c}{v}': _get_index_price(f'ff3_{c}{v}') for c, v in zip('smb', 'gnv')})
+    box9_price = pd.DataFrame({f'{c}{v}': _get_index_price(f'ff3_{c}{v}') for c, v in product('smb', 'gnv')})
     box9_ret = _resample_ret(box9_price, calc_freq).iloc[1:]
 
     filter_mean = lambda x: box9_ret.filter(regex=x, axis=1).mean(axis=1)
@@ -107,8 +109,8 @@ def get_index_bond5(calc_freq=const.FreqEnum.W):
 
     factors = pd.DataFrame({
         'market': calc_market_factor(code_or_price=bond_market, calc_freq=calc_freq),
-        'credit': _resample_ret(credit_3a, calc_freq) - _resample_ret(high_yield, calc_freq),
-        'default': _resample_ret(credit_3a, calc_freq) - _resample_ret(high_yield, calc_freq),
+        'credit': _resample_ret(credit_3a, calc_freq) - _resample_ret(bond_market, calc_freq),
+        'default_': _resample_ret(high_yield, calc_freq) - _resample_ret(credit_3a, calc_freq),
         'cmoney': calc_market_factor(code_or_price='h11025.CSI', calc_freq=calc_freq),
         'convert': calc_market_factor(code_or_price='h00906.CSI', calc_freq=calc_freq),
     }).dropna()

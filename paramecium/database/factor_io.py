@@ -5,6 +5,7 @@
 """
 import importlib
 
+import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
@@ -36,7 +37,7 @@ def add_factor_to_monitor(module_path, params=None, freq='M', active=1):
 
 
 class FactorDBTool(AbstractFactorIO):
-    __sql_mapping = {float: sa.Float, str: sa.String(100), int: sa.Integer, pd.Timestamp: sa.Date}
+    __sql_mapping = {float: sa.Float, str: sa.String(100), int: sa.Integer, np.datetime64: sa.Date}
 
     def __init__(self, factor: 'AbstractFactor'):
         super().__init__(factor)
@@ -79,7 +80,7 @@ class FactorDBTool(AbstractFactorIO):
                     *(self.table.c[col] for col in (*self._factor.field_types.keys(), 'wind_code'))
                 ).filter(self.table.c.trade_dt == dt).all()
             ).set_index('wind_code')
-        return snapshot
+        return snapshot.astype(self._factor.field_types, errors='ignore')
 
     def get_calc_dates(self, start, end, freq):
         # real start date

@@ -128,3 +128,16 @@ class Connections(BaseORM):
     child_code = sa.Column(sa.String(40))
 
     uk = sa.UniqueConstraint(connect_type, parent_code, name=f'uk_mf_connection_codes')
+
+
+class Converted(BaseORM):
+    """
+    转型基金
+    基金公告手工筛选 "转型为"
+    """
+    __tablename__ = 'mf_org_convert'
+
+    wind_code = sa.Column(sa.String(40), primary_key=True)
+    ann_date = sa.Column(sa.Date)
+    chg_date = sa.Column(sa.Date, index=True)
+    memo = sa.Column(sa.Text)

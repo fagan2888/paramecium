@@ -29,11 +29,14 @@ class FundDescription(CrawlerJob):
     def run(self, *args, **kwargs):
         model = fund.Description
 
-        self.get_logger().debug('Getting fund list from wind')
-        w_set = self.query_wind(
-            api_name='wset', tablename="sectorconstituent",
-            options=f"date={pd.Timestamp.now():%Y-%m-%d};sectorid={const.WindSector.MF.value};field=wind_code"
-        ).squeeze()
+        self.get_logger().debug('getting fund list from wind')
+        w_set = pd.concat((
+            self.query_wind(
+                api_name='wset', tablename="sectorconstituent",
+                options=f"date={pd.Timestamp.now():%Y-%m-%d};sectorid={sec_id};field=wind_code"
+            ) for sec_id in ('1000027452000000', '1000008492000000')
+        )).squeeze()
+        w_set = w_set.loc[lambda ser: ~ser.str.split('.').str[0].duplicated(keep='first')]
 
         self.get_logger().debug('getting description from wind')
         w_desc = pd.concat((
@@ -42,43 +45,20 @@ class FundDescription(CrawlerJob):
             ) for funds in utils.chunk(w_set.values, 800)
         ), axis=0, sort=False)
         w_desc.loc[:, 'is_initial'] = (w_desc['is_initial'] == '是').astype(int)
-
-        self.get_logger().debug('getting description from tushare')
-        ts_desc = pd.concat(
-            (self.get_tushare_data(api_name='fund_basic', market=m) for m in list('OE')),
-            axis=0, sort=False
-        ).set_index('wind_code').filter(model.__dict__.keys(), axis=1)
-        ts_desc.loc[
-            lambda df: df['setup_date'].notnull() & df['maturity_date'].isnull(), 'maturity_date'] = pd.Timestamp.max
-
-        self.get_logger().debug('merge wind and tushare data.')
-        suffix = {k: v for k, v in ts_desc.index.str.split('.') if v != 'OF'}
-
-        def _func(code):
-            pre, ex = code.split('.')
-            return '.'.join((pre, suffix.get(pre.replace('!', ''), ex)))
-
-        w_desc['wind_code'] = w_desc.index.map(_func)
-        w_desc.index = w_desc['wind_code'].map(lambda x: x.replace('!', ''))
-        desc = pd.concat((
-            w_desc.drop(['grad_type', 'etf_code'], axis=1, errors='ignore'),
-            ts_desc
-        ), axis=1, sort=False).dropna(subset=['wind_code'])
-        self.get_logger().info('saving description into database')
-        self.insert_data(records=desc, model=model, ukeys=[model.wind_code])
+        w_desc['wind_code'], w_desc.index = w_desc.index, w_desc.index.str.replace('!', '')
 
         self.get_logger().debug('deal with grad funds.')
         grad = w_desc.dropna(subset=['grad_type']).pivot('full_name', 'grad_type', 'wind_code')
         grad = grad.fillna({'分级基金优先级': grad['分级基金母基金']})
         # wind think grad A as initial, adjust to parent.
-        w_desc.loc[lambda df: df['wind_code'].isin(grad['分级基金优先级']), 'is_initial'] = False
-        w_desc.loc[lambda df: df['wind_code'].isin(grad['分级基金母基金']), 'is_initial'] = True
+        w_desc.loc[lambda df: df['wind_code'].isin(grad['分级基金优先级']), 'is_initial'] = 0
+        w_desc.loc[lambda df: df['wind_code'].isin(grad['分级基金母基金']), 'is_initial'] = 1
         # insert connections
         for chn, eng in (('分级基金优先级', 'A'), ('分级基金普通级', 'B')):
             self.insert_data(
                 records=grad.loc[:, ['分级基金母基金', chn]].rename(columns={
                     '分级基金母基金': 'parent_code', '分级基金优先级': 'child_code', '分级基金普通级': 'child_code'
-                }).assign(connect_type=eng),
+                }).assign(connect_type=eng).dropna(subset=['parent_code']),
                 model=fund.Connections, ukeys=fund.Connections.uk.columns, msg=eng
             )
 
@@ -89,6 +69,19 @@ class FundDescription(CrawlerJob):
             }).assign(connect_type='F'),
             model=fund.Connections, ukeys=fund.Connections.uk.columns, msg='F'
         )
+
+        self.get_logger().debug('getting description from tushare')
+        ts_desc = pd.concat(
+            (self.get_tushare_data(api_name='fund_basic', market=m) for m in list('OE')),
+            axis=0, sort=False
+        ).set_index('wind_code').filter(model.__dict__.keys(), axis=1)
+        ts_desc.loc[
+            lambda df: df['setup_date'].notnull() & df['maturity_date'].isnull(), 'maturity_date'] = pd.Timestamp.max
+
+        self.get_logger().debug('merge wind and tushare data.')
+        desc = pd.concat((w_desc.drop(['grad_type', 'etf_code'], axis=1, errors='ignore'), ts_desc), axis=1, sort=False)
+        self.get_logger().info('saving description into database')
+        self.insert_data(records=desc.dropna(subset=['wind_code']), model=model, ukeys=[model.wind_code])
 
 
 class FundSales(CrawlerJob):
@@ -213,12 +206,12 @@ class FundSector(CrawlerJob):
         else:
             max_dt = pd.Timestamp('2009-12-30')
 
-        for month_end in (t for t in get_dates(freq) if max_dt < t <= get_last_td()):
+        for dt in (t for t in get_dates(freq) if max_dt < t <= get_last_td()):
             sector_list = pd.concat((self.query_wind(
                 api_name='wset', tablename="sectorconstituent", usedf=True,
-                options=f"date={month_end:%Y-%m-%d};sectorid={sector};field=wind_code",
-            ).assign(trade_dt=month_end, sector_code=sector, type_=sector[:4]) for sector in codes))
-            self.insert_data(sector_list, fund.SectorSnapshot, msg=f'{month_end:%Y%m%d}')
+                options=f"date={dt:%Y-%m-%d};sectorid={sector};field=wind_code",
+            ).assign(trade_dt=dt, sector_code=sector, type_=sector[:4]) for sector in codes))
+            self.insert_data(sector_list, fund.SectorSnapshot, msg=f'{dt:%Y%m%d}')
 
     def run(self, *args, **kwargs):
         # '200101x'按底层资产分类
