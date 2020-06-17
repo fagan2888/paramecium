@@ -4,6 +4,7 @@
 @Author: Sue Zhu
 """
 import sqlalchemy as sa
+
 from .._postgres import *
 
 
@@ -20,7 +21,7 @@ class Description(BaseORM):
     list_date = sa.Column(sa.Date)  # 发布日期 list_date
     weights_rule = sa.Column(sa.String(10))  # 加权方式 index_weights_rule
     publisher = sa.Column(sa.String(100))  # 发布方 publisher
-    index_code = sa.Column(sa.String(10), index=True)  # 指数类别代码 index_code
+    index_code = sa.Column(sa.String(10), index=True, server_default='647000000')  # 指数类别代码 index_code
     index_style = sa.Column(sa.String(40))  # 指数风格 index_style
     index_intro = sa.Column(sa.Text)  # 指数简介 index_intro
     weight_type = sa.Column(sa.String(100))  # 权重类型 weight_type
@@ -34,7 +35,7 @@ class EODPrice(BaseORM):
     """ A股指数日行情 """
     __tablename__ = 'index_org_price'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
     wind_code = sa.Column(sa.String(40), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
     currency = sa.Column(sa.String(40))  # 货币代码 crncy_code
@@ -58,7 +59,7 @@ class DerivativeDesc(BaseORM):
 class DerivativePrice(BaseORM):
     __tablename__ = 'index_derivative_price'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
     benchmark_code = sa.Column(sa.String(40), index=True)
     trade_dt = sa.Column(sa.Date, index=True)
     close_ = sa.Column(sa.Float)

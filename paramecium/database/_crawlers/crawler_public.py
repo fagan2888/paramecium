@@ -8,10 +8,9 @@ import logging
 import pandas as pd
 from bs4 import BeautifulSoup
 
-from .._postgres import get_session
 from ..pg_models import others
 from ...utils.date_tool import expand_calendar
-from ._base import CrawlerJob
+from ._base import *
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,8 @@ class RateBaselineCrawler(CrawlerJob):
     """
 
     def run(self, *args, **kwargs):
-        respond = self.request_from_web('http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
+        respond = self.request_from_web(
+            'http://datainterface.eastmoney.com/EM_DataCenter/XML.aspx?type=GJZB&style=ZGZB&mkt=13')
         bs = BeautifulSoup(respond.text, features="lxml")
         data = pd.DataFrame(
             data=([[*pd.to_datetime(self.html2list(bs.find('series')), format='%y-%m-%d')]]

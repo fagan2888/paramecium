@@ -9,9 +9,7 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from ._base import CrawlerJob
-from .._postgres import get_session
-from .._third_party_api import get_wind_conf
+from ._base import *
 from ..comment import get_dates, get_last_td
 from ..pg_models import fund
 from ... import const, utils
@@ -139,7 +137,7 @@ class FundNav(CrawlerJob):
                     t.maturity_date - t.max_dt > -5
                 """,
                 session.bind, parse_dates=['max_dt'], index_col=['wind_code']
-            ).squeeze().loc[lambda ser: (ser.index.str.len() < 10) & (ser < get_last_td())]
+            ).squeeze().loc[lambda ser: ser < get_last_td()]  # (ser.index.str.len() < 10) &
         max_dts -= pd.Timedelta(days=7)
 
         nav = pd.DataFrame()

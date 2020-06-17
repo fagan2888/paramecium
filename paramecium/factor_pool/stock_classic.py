@@ -11,7 +11,7 @@ import pandas as pd
 from paramecium.const import AssetEnum
 from paramecium.database import stock
 from paramecium.interface import AbstractFactor
-from paramecium.utils.data_proc import OutlierMAD, ScaleMinMax
+from paramecium.utils.transformer import OutlierMAD, ScaleMinMax
 
 
 class FamaFrench(AbstractFactor):

@@ -61,7 +61,7 @@ class WebSaleList(BaseORM):
 class Nav(BaseORM):
     __tablename__ = 'mf_org_nav'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
     wind_code = sa.Column(sa.String(40), index=True)
     ann_date = sa.Column(sa.Date)
     trade_dt = sa.Column(sa.Date, index=True)
@@ -76,7 +76,7 @@ class Nav(BaseORM):
 class ManagerHistory(BaseORM):
     __tablename__ = 'mf_org_manager'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
     wind_code = sa.Column(sa.String(40), index=True)  # ts_code str Y 基金代码
     ann_date = sa.Column(sa.Date)  # ann_date str Y 公告日期
     manager_name = sa.Column(sa.String(40))  # name str Y 基金经理姓名
@@ -94,7 +94,7 @@ class Sector(BaseORM):
     """
     __tablename__ = 'mf_org_sector'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
 
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code
@@ -108,7 +108,7 @@ class SectorSnapshot(BaseORM):
     """
     __tablename__ = 'mf_org_sector_m'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
     wind_code = sa.Column(sa.String(40), index=True)
     sector_code = sa.Column(sa.String(40), index=True)
     trade_dt = sa.Column(sa.Date, index=True)
@@ -122,7 +122,7 @@ class Connections(BaseORM):
     """
     __tablename__ = 'mf_org_connections'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
     connect_type = sa.Column(sa.String(1), index=True)  # 关系代码 {'F':联接基金, 'A':分级A, 'B':分级B}
     parent_code = sa.Column(sa.String(40), index=True)
     child_code = sa.Column(sa.String(40))

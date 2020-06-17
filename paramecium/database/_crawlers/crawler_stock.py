@@ -8,10 +8,9 @@ from itertools import product
 import pandas as pd
 import sqlalchemy as sa
 
-from .._postgres import get_session
+from ._base import *
 from ..comment import get_last_td, get_dates
 from ..pg_models import stock, others
-from ._base import CrawlerJob
 from ... import const
 
 

@@ -6,6 +6,7 @@
 from functools import lru_cache
 
 import pandas as pd
+import sqlalchemy as sa
 
 from ._postgres import get_session
 from .comment import get_sector, get_dates
@@ -17,18 +18,20 @@ from ..interface import AbstractUniverse
 @lru_cache()
 class FundUniverse(AbstractUniverse):
 
-    def __init__(
-            self, include_=None,
-            # 定期开放,委外,机构,可转债
-            exclude_=("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000"),
-            initial_only=True, open_only=True, issue=250, size_=0.5
-    ):
+    def __init__(self, include_=(),
+                 # 定期开放,委外,机构,可转债
+                 exclude_=("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000"),
+                 initial_only=True, open_only=True, issue=250, size_=0.5):
         self.include = include_
         self.exclude = exclude_
         self.initial_only = initial_only
         self.open_only = open_only
         self.issue = issue  # trade days
         self.size = size_  # TODO: size limit has not been apply.
+
+    def __str__(self):
+        return (f"Fund(include={self.include!r}, exclude={self.exclude!r}, initial={self.initial_only}, "
+                f"open={self.open_only}, issue={self.issue} days)")
 
     @lru_cache(maxsize=2)
     def get_instruments(self, month_end):
@@ -40,7 +43,13 @@ class FundUniverse(AbstractUniverse):
                 fund.Description.redemption_start_dt <= month_end,
                 fund.Description.maturity_date >= month_end,
                 # not connect fund
-                fund.Description.wind_code.notin_(ss.query(fund.Connections.child_code))
+                fund.Description.wind_code.notin_(ss.query(fund.Connections.child_code)),
+                # issue reset after convert happened.
+                sa.not_(ss.query(fund.Converted.wind_code).filter(
+                    fund.Converted.chg_date > issue_dt,
+                    fund.Converted.chg_date <= month_end,
+                    fund.Converted.wind_code == fund.Description.wind_code
+                ).exists())
             ]
             if self.open_only:
                 filters.append(fund.Description.fund_type == '契约型开放式')

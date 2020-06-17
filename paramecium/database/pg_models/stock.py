@@ -12,7 +12,7 @@ codes.to_clipboard(index=False)
 """
 import sqlalchemy as sa
 
-from .._postgres import gen_oid, BaseORM
+from .._postgres import *
 
 
 class AShareDescription(BaseORM):
@@ -40,7 +40,7 @@ class AShareEODPrice(BaseORM):
     """ 中国A股日行情 """
     __tablename__ = 'stock_org_price'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
     open_ = sa.Column(sa.Float)  # 开盘价(元) open
@@ -58,7 +58,7 @@ class AShareSuspend(BaseORM):
     """ A股停复牌信息 """
     __tablename__ = 'stock_org_suspend'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     suspend_date = sa.Column(sa.Date, index=True)  # 停牌日期
     suspend_type = sa.Column(sa.Integer, index=True)  # 停牌类型代码
@@ -74,7 +74,7 @@ class AShareEODDerivativeIndicator(BaseORM):
     """ A股日行情估值指标 """
     __tablename__ = 'stock_org_eod_derivative'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
 
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
@@ -124,7 +124,7 @@ class AShareSector(BaseORM):
     """
     __tablename__ = 'stock_org_sector'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
 
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code
@@ -177,7 +177,7 @@ class ASharePreviousName(BaseORM):
     """
     __tablename__ = 'stock_jq_previous_name'
 
-    oid = gen_oid()
+    oid = gen_oid_col()
 
     wind_code = sa.Column(name='code', type_=sa.String(10), index=True)  # ts代码 ts_code
     new_name = sa.Column(name='new_name', type_=sa.String(40), index=True)  # 中证行业代码 index_code

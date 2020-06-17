@@ -30,7 +30,8 @@ class _RetFactor(AbstractFactor):
         self.freq = const.FreqEnum[freq]
         self.bk_win = bk_win
         self.universe = FundUniverse(
-            issue=int(250 / self.freq.value * self.bk_win) + 63,  # 考虑到至少三个月建仓期
+            exclude_=None,
+            issue=int(250 / self.freq.value * self.bk_win) + 63 if self.bk_win else 63,  # 考虑到至少三个月建仓期
             size_=0  # 初始条件较为宽松，防止因子覆盖率过低
         )
 
@@ -45,7 +46,7 @@ class _RetFactor(AbstractFactor):
         dates = [t for t in get_dates(freq) if t <= dt]
         funds = self.universe.get_instruments(dt)
 
-        price = get_price(self.asset_type, start=dates[-bk_win - 1], end=dt)
+        price = get_price(self.asset_type, start=dates[-bk_win - 1] if bk_win else None, end=dt)
         price['adj_nav'] = price['unit_nav'] * price['adj_factor']
         price_pvt = price.pivot('trade_dt', 'wind_code', 'adj_nav').filter(dates, axis=0).filter(funds, axis=1)
         ret = price_pvt.pct_change(1, limit=1).iloc[1:].where(lambda df: df.ne(0))

@@ -4,7 +4,7 @@
 @Author: Sue Zhu
 """
 __all__ = [
-    'BaseORM', 'gen_oid', 'gen_update',
+    'BaseORM', 'gen_oid_col', 'gen_update',
     'get_sql_engine', 'get_session', 'try_commit',
     'get_or_create_table', 'create_all_table', 'upsert_data', 'bulk_insert', 'clean_duplicates'
 ]
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 def _df2list(raw_data):
     if isinstance(raw_data, pd.DataFrame):
-        # return [record.dropna().to_dict() for _, record in raw_data.iterrows()]
         return [record.to_dict() for _, record in raw_data.fillna(sa.null()).iterrows()]
     else:
         return raw_data
@@ -46,7 +45,7 @@ def try_commit(session, on_doing, success=''):
         session.rollback()
 
 
-def gen_oid():
+def gen_oid_col():
     return sa.Column('oid', pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
 
 
@@ -110,7 +109,7 @@ def get_or_create_table(name, *columns, **kwargs):
         if columns:
             table = sa.Table(
                 name, BaseORM.metadata,
-                gen_oid(), gen_update(), *columns,
+                gen_oid_col(), gen_update(), *columns,
                 keep_existing=True, **kwargs
             )
             table.create(bind=engine)
