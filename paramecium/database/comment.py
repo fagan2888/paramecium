@@ -17,6 +17,12 @@ from ..const import FreqEnum, AssetEnum
 
 @lru_cache()
 def get_dates(freq=None):
+    """
+    获取A股交易日
+
+    :param freq: str or FreqEnum
+    :return: DatetimeIndex
+    """
     with get_session() as session:
         query = session.query(others.TradeCalendar.trade_dt)
         if freq:
@@ -27,12 +33,10 @@ def get_dates(freq=None):
     return pd.to_datetime(sorted(data))
 
 
-def resampler(target_freq):
-    mapper = get_dates(target_freq).to_series().resample('D').bfill()
-    return mapper
-
-
-def get_last_td():
+def get_last_td() -> pd.Timestamp:
+    """
+    获取最新交易日，考虑到数据更新延迟，23点前认为是前一天，之后包含当天
+    """
     cur_date = pd.Timestamp.now()
     if cur_date.hour <= 22:
         cur_date -= pd.Timedelta(days=1)
@@ -40,19 +44,19 @@ def get_last_td():
 
 
 @lru_cache()
-def get_basic_rates(type_='save'):
+def _basic_rates(type_='save'):
     with get_session() as ss:
         query_df = ss.query(
             others.InterestRate.change_dt.label('trade_dt'),
             getattr(others.InterestRate, f'{type_}_rate')
         ).all()
 
-    return {k: v / 100 for k, v in query_df}
+    return {pd.Timestamp(t): (rate / 100) for t, rate in query_df}
 
 
 def get_risk_free_rates(type_='save', freq=FreqEnum.D):
-    basic_rates = pd.Series(get_basic_rates(type_)).rename(index=pd.to_datetime)
-    daily_rates = basic_rates.reindex(index=pd.date_range(basic_rates.index[0], pd.Timestamp.now(), freq='D'))
+    basic_rates = pd.Series(_basic_rates(type_))
+    daily_rates = basic_rates.reindex(index=pd.date_range('1900-01-01', pd.Timestamp.now(), freq='D'))
     rf = daily_rates.ffill().bfill().add(1).pow(1 / freq.value).sub(1)
     return rf.filter(items=get_dates(freq))
 

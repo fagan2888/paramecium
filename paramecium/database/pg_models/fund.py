@@ -88,9 +88,7 @@ class ManagerHistory(BaseORM):
 
 class Sector(BaseORM):
     """
-    A股板块信息
-    - 中证行业成分(2016): http://tushare.xcsc.com:7173/document/2?doc_id=10212
-    - 申万: http://124.232.155.79:7173/document/2?doc_id=10181
+    基金板块信息
     """
     __tablename__ = 'mf_org_sector'
 
@@ -141,3 +139,57 @@ class Converted(BaseORM):
     ann_date = sa.Column(sa.Date)
     chg_date = sa.Column(sa.Date, index=True)
     memo = sa.Column(sa.Text)
+
+
+class PortfolioAsset(BaseORM):
+    """
+    基金资产配置
+    """
+    __tablename__ = 'mf_org_portfolio'
+
+    oid = gen_oid_col()
+    wind_code = sa.Column(sa.String(40), index=True)  # S_INFO_WINDCODE Wind代码
+    end_date = sa.Column(sa.Date, index=True)  # F_PRT_ENDDATE 截止日期
+    total_asset = sa.Column(sa.Float)  # F_PRT_TOTALASSET 资产总值(元)
+    net_asset = sa.Column(sa.Float)  # F_PRT_NETASSET 资产净值(元)
+
+    stock_value = sa.Column(sa.Float)  # F_PRT_STOCKVALUE 持有股票市值(元)
+    stock_passive = sa.Column(sa.Float)  # F_PRT_PASVSTKVALUE 指数投资持有股票市值(元)
+    stock_positive = sa.Column(sa.Float)  # F_PRT_POSVSTKVALUE 积极投资持有股票市值(元)
+    stock_hk = sa.Column(sa.Float)  # F_PRT_HKSTOCKVALUE 港股通投资港股市值
+
+    bond_value = sa.Column(sa.Float)  # F_PRT_BONDVALUE 持有债券市值总计(元)
+    fund_value = sa.Column(sa.Float)  # F_PRT_FUNDVALUE 持有基金市值(元)
+    warrant_value = sa.Column(sa.Float)  # F_PRT_WARRANTVALUE 持有权证市值(元)
+    mm_value = sa.Column(sa.Float)  # F_PRT_MMVALUE 持有货币市场工具市值(元)
+    cash = sa.Column(sa.Float)  # F_PRT_CASH 持有现金(元)
+    other = sa.Column(sa.Float)  # F_PRT_OTHER 持有其他资产(元)
+
+    mmf_avgptm = sa.Column(sa.Float)  # F_MMF_AVGPTM 投资组合平均剩余期限(天)
+    mmf_reverserepo = sa.Column(sa.Float)  # F_MMF_REVERSEREPO 买入返售证券(元)
+    mmf_repo = sa.Column(sa.Float)  # F_MMF_REPO 卖出回购证券(元)
+
+    ann_date = sa.Column(sa.Date)  # F_ANN_DATE 公告日期
+    dr_cr_rebalance = sa.Column(sa.Float)  # F_PRT_DEBCREBALANCE 借贷方差额(元)
+    abs_value = sa.Column(sa.Float)  # F_PRT_ABSVALUE 持有资产支持证券市值(元)
+
+
+class PortfolioAssetBond(BaseORM):
+    """
+    基金持有券种分布
+    """
+    __tablename__ = 'mf_org_bond'
+
+    oid = gen_oid_col()
+    wind_code = sa.Column(sa.String(40), index=True)  # S_INFO_WINDCODE Wind代码
+    end_date = sa.Column(sa.Date, index=True)  # F_PRT_ENDDATE 截止日期
+    government = sa.Column(sa.Float)  # F_PRT_GOVBOND 持有国债市值(元)
+    no_gov = sa.Column(sa.Float)  # F_PRT_BDVALUE_NOGOV 持有债券市值(不含国债)(元)
+    financial = sa.Column(sa.Float)  # F_PRT_FINANBOND 持有金融债市值(元)
+    convert = sa.Column(sa.Float)  # F_PRT_COVERTBOND 持有可转债市值(元)
+    corp = sa.Column(sa.Float)  # F_PRT_CORPBOND 持有企债市值(元)
+    center_bank = sa.Column(sa.Float)  # F_PRT_CTRBANKBILL 持有央行票据市值(元)
+    politic_financial = sa.Column(sa.Float)  # F_PRT_POLIFINANBDVALUE 持有政策性金融债市值(元)
+    short_term_cp = sa.Column(sa.Float)  # F_PRT_CPVALUE 持有短期融资券市值(元)
+    mid_term_cp = sa.Column(sa.Float)  # F_PRT_MTNVALUE 持有中期票据市值(元)
+    cds = sa.Column(sa.Float)  # F_PRT_CDS 持有同业存单市值(元)

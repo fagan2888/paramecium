@@ -7,15 +7,17 @@ from functools import lru_cache
 
 import pandas as pd
 import sqlalchemy as sa
+from pandas.tseries.offsets import QuarterEnd
 
 from ._postgres import get_session
+from ._tool import get_type_codes
 from .comment import get_sector, get_dates
 from .pg_models import fund
 from .. import const
 from ..interface import AbstractUniverse
 
 
-@lru_cache()
+@lru_cache(maxsize=4)
 class FundUniverse(AbstractUniverse):
 
     def __init__(self, include_=(),
@@ -30,7 +32,10 @@ class FundUniverse(AbstractUniverse):
         self.size = size_  # TODO: size limit has not been apply.
 
     def __str__(self):
-        return (f"Fund(include={self.include!r}, exclude={self.exclude!r}, initial={self.initial_only}, "
+        mapping = get_type_codes('mf_org_sector_m')['sector_code']
+        include = ','.join(map(lambda x: mapping.get(x, x), self.include))
+        exclude = ','.join(map(lambda x: mapping.get(x, x), self.exclude))
+        return (f"Fund(include=[{include}], exclude=[{exclude}], initial={self.initial_only}, "
                 f"open={self.open_only}, issue={self.issue} days)")
 
     @lru_cache(maxsize=2)
@@ -55,6 +60,12 @@ class FundUniverse(AbstractUniverse):
                 filters.append(fund.Description.fund_type == '契约型开放式')
             if self.initial_only:
                 filters.append(fund.Description.is_initial == 1)
+            if self.size > 0:
+                filters.append(ss.query(fund.PortfolioAsset.wind_code).filter(
+                    fund.PortfolioAsset.net_asset >= self.size * 1e8,
+                    fund.PortfolioAsset.end_date == (month_end - pd.Timedelta(days=22) - QuarterEnd()),
+                    fund.PortfolioAsset.wind_code == fund.Description.wind_code
+                ).exists())
 
             fund_list = {code for (code,) in ss.query(fund.Description.wind_code).filter(*filters).all()}
 

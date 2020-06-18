@@ -16,7 +16,7 @@ def cumulative_returns(returns):
 
 
 def annual_returns(returns, mul=250):
-    return (1 + cumulative_returns(returns)) ** (returns.shape[0] / mul) - 1
+    return (1 + cumulative_returns(returns)) ** (mul / returns.shape[0]) - 1
 
 
 def annual_volatility(returns, mul=250):
@@ -82,7 +82,7 @@ def regression(returns, factors, sample_weight=None):
     Regression function directly use numpy function. maybe add a weight param later.
     :param returns: returns array with n sample and m portfolio.
     :param factors: returns array with n sample and k factor.
-    :param w_diag: n*1 array
+    :param sample_weight: n*1 array
     :return:
     """
     if sample_weight is None:

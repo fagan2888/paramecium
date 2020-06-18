@@ -9,7 +9,7 @@ from itertools import product
 
 import pandas as pd
 
-from .comment import get_price, get_risk_free_rates, get_dates, resampler
+from .comment import get_price, get_risk_free_rates, get_dates
 from .. import const
 
 
@@ -19,7 +19,8 @@ def _get_index_price(code):
 
 
 def _resample_ret(price, freq):
-    return price.rename(index=resampler(freq)).loc[lambda ser: ~ser.index.duplicated()].pct_change(1)
+    mapper = get_dates(freq).to_series().resample('D').bfill()
+    return price.rename(index=mapper).loc[lambda ser: ~ser.index.duplicated()].pct_change(1)
 
 
 def calc_market_factor(code_or_price, calc_freq=const.FreqEnum.W):

@@ -13,7 +13,7 @@ import scipy.stats as sc_stats
 
 from .. import const
 from ..database import get_dates, get_price, get_index_ff3, get_index_bond5
-from ..database.fund import FundUniverse
+from ..database.fund_ import FundUniverse
 from ..interface import AbstractFactor
 from ..utils import price_stats as p_stats
 
@@ -31,7 +31,7 @@ class _RetFactor(AbstractFactor):
         self.bk_win = bk_win
         self.universe = FundUniverse(
             exclude_=None,
-            issue=int(250 / self.freq.value * self.bk_win) + 63 if self.bk_win else 63,  # 考虑到至少三个月建仓期
+            issue=int(250 / self.freq.value * self.bk_win) + 63,  # 考虑到至少三个月建仓期
             size_=0  # 初始条件较为宽松，防止因子覆盖率过低
         )
 
@@ -42,16 +42,15 @@ class _RetFactor(AbstractFactor):
     def name(self):
         return self.freq.name.lower() + (f'{self.bk_win:03d}' if self.bk_win else "_itd")
 
-    def _get_price_pvt(self, dt, bk_win=None, freq=const.FreqEnum.W):
+    def _get_price_pvt(self, dt, bk_win, freq=const.FreqEnum.W):
         dates = [t for t in get_dates(freq) if t <= dt]
         funds = self.universe.get_instruments(dt)
 
-        price = get_price(self.asset_type, start=dates[-bk_win - 1] if bk_win else None, end=dt)
+        price = get_price(self.asset_type, start=dates[-bk_win - 1], end=dt)
         price['adj_nav'] = price['unit_nav'] * price['adj_factor']
         price_pvt = price.pivot('trade_dt', 'wind_code', 'adj_nav').filter(dates, axis=0).filter(funds, axis=1)
         ret = price_pvt.pct_change(1, limit=1).iloc[1:].where(lambda df: df.ne(0))
-        if bk_win is not None:
-            ret = ret.dropna(thresh=round(bk_win * 0.8), axis=1)
+        ret = ret.dropna(thresh=round(bk_win * 0.8), axis=1)
         ret = ret.loc[:, ret.std().gt(self.std_limit) & ret.abs().max().le(1.1 ** (250 / freq.value) - 1)]
         return ret
 

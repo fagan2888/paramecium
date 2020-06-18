@@ -58,7 +58,6 @@ class SingleFactorAnalyzer(object):
     def get_factor(self, dt):
         val = self.io.fetch_snapshot(dt)
         if self.universe is not None:
-            # val = val.reindex(index=self.universe.get_instruments(dt))
             val = val.filter(self.universe.get_instruments(dt), axis=0)
         return val
 
@@ -82,9 +81,8 @@ class SingleFactorAnalyzer(object):
 
     @staticmethod
     def snapshot_reg(val, ret):
-
         def _agg(arr):
-            arr_, ret_ = arr.dropna().align(ret, axis=0)
+            arr_, ret_ = arr.dropna().align(ret, axis=0, join='inner')
             reg = stats.regression(ret_.values, np.vstack([np.ones_like(arr_), arr_.values]).T)
             return pd.Series([reg.beta[1], reg.t_value[1]], index=['ret', 't'])
 
@@ -100,6 +98,8 @@ class SingleFactorAnalyzer(object):
 
             # 数据准备
             factor_val = self.get_factor(t)
+            if factor_val.shape[0] < self.group_quantile * 1.5:
+                continue
             ret = self.get_price(dates[i + shift]).div(self.get_price(dates[i + shift - 1])).sub(1).dropna()
             ret = ret.reindex(index=factor_val.index).fillna(0)
 
@@ -119,7 +119,9 @@ class SingleFactorAnalyzer(object):
             reg[t] = self.snapshot_reg(factor_val, ret)
 
             # grouped portfolio
-            grouped[t] = rank_val.apply(lambda ser: ret.groupby(ser).mean()).T
+            g = lambda ser: ret.groupby(ser.dropna()).mean()
+            g_ret = rank_val.apply(g).drop('nan', errors='ignore').T
+            grouped[t] = g_ret.assign(DIFF=g_ret[f'L{self.group_quantile:02.0f}'] - g_ret[f'L01'])
 
         # summary
         with pd.ExcelWriter(output, datetime_format='yyyy/m/d') as excel:
@@ -133,31 +135,42 @@ class SingleFactorAnalyzer(object):
                 '测试时间': pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
             }, name='单因子测试').to_excel(excel, '基本信息')
 
+            sum_rows = 0
+            sum_sheet = '结果'
+
             # description stats
             desc_summary = pd.concat(desc, names=['trade_dt', 'field_name'])
-            desc_summary.to_excel(excel, '描述性统计', merge_cells=False)
+            desc_summary.reset_index().to_excel(excel, '描述性统计', index=False)
 
             # ic test
             ic_ts = pd.DataFrame(ic).T
+            ic_ts.to_excel(excel, 'RankIC')
+
             ic_mean = ic_ts.mean()
             ic_summary = pd.DataFrame({
                 'IC Mean': ic_mean,
                 'IR': ic_mean / ic_ts.std(),
-                'T-Stats': sc_stats.ttest_1samp(ic_ts, popmean=0, axis=0, nan_policy='omit').statistic
+                'T-Stats': sc_stats.ttest_1samp(ic_ts, popmean=0, axis=0, nan_policy='omit').statistic,
+                'AutoCorr1': ic_ts.apply(pd.Series.autocorr, lag=1),
+                'AutoCorr2': ic_ts.apply(pd.Series.autocorr, lag=2)
             }).T
-            ic_summary.to_excel(excel, 'RankIC检验')
-            ic_ts.to_excel(excel, 'RankIC检验', startrow=6)
+            ic_summary.to_excel(excel, sum_sheet, startrow=sum_rows)
+            sum_rows += ic_summary.shape[0] + 3
 
             # reg test
             reg_ts = pd.concat(reg, names=['trade_dt', 'field_name'])
+            reg_ts.reset_index().to_excel(excel, '截面回归检验_详情', index=False)
+
             reg_summary = pd.DataFrame({
                 'Mean Ret': reg_ts['ret'].unstack('field_name').mean(),
-                'Ret T-Test': sc_stats.ttest_1samp(
+                'T-Test': sc_stats.ttest_1samp(
                     reg_ts['ret'].unstack('field_name'), popmean=0, axis=0, nan_policy='omit').statistic,
-                'Mean T-Stat': reg_ts['t'].unstack('field_name').mean()
+                'Mean T-Stat': reg_ts['t'].unstack('field_name').mean(),
+                'AutoCorr1': reg_ts['ret'].unstack('field_name').apply(pd.Series.autocorr, lag=1),
+                'AutoCorr2': reg_ts['ret'].unstack('field_name').apply(pd.Series.autocorr, lag=2)
             }).T
-            reg_summary.to_excel(excel, '截面回归检验')
-            reg_ts.to_excel(excel, '截面回归检验_详情')
+            reg_summary.to_excel(excel, sum_sheet, startrow=sum_rows)
+            sum_rows += ic_summary.shape[0] + 3
 
             # 分层
             grouped_ts = pd.concat(grouped, names=['trade_dt', 'field_name'])
@@ -171,5 +184,5 @@ class SingleFactorAnalyzer(object):
                     },
                     index=grouped_ts.columns
                 )
-            ).to_excel(excel, '分层收益')
+            ).to_excel(excel, '分层收益', merge_cells=False)
             grouped_ts.reset_index().to_excel(excel, '分层收益_详情', index=False)

@@ -104,7 +104,7 @@ class IndexPrice(CrawlerJob):
         for code, start in desc.loc[desc['localized'].eq(1), 'max_dt'].items():
             try:
                 for dt in pd.date_range(start - pd.Timedelta(days=5), pd.Timestamp.now(), freq=f'{self.ts_limit}D'):
-                    self.localized_ts(ts_code=code, start_date=dt.strftime('%Y%m%d'))
+                    self.localized_ts(ts_code=code, start_date=dt)
             except Exception as e:
                 self.get_logger().error(repr(e))
                 break
@@ -128,7 +128,7 @@ class IndexPrice(CrawlerJob):
                 for (code, base_dt) in index_codes:
                     try:
                         for dt in pd.date_range(base_dt, pd.Timestamp.now(), freq=f'{self.ts_limit}D'):
-                            ts_price = self.localized_ts(ts_code=code, start_date=dt.strftime('%Y%m%d'))
+                            ts_price = self.localized_ts(ts_code=code, start_date=dt)
                             if ts_price.empty:
                                 no_price.append(code)
                                 break

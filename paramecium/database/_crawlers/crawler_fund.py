@@ -8,11 +8,13 @@ import json
 import numpy as np
 import pandas as pd
 import sqlalchemy as sa
+from pandas.tseries.offsets import QuarterEnd
 
 from ._base import *
 from ..comment import get_dates, get_last_td
 from ..pg_models import fund
 from ... import const, utils
+from ...utils import chunk
 
 
 class FundDescription(CrawlerJob):
@@ -194,37 +196,78 @@ class FundSector(CrawlerJob):
     Crawler fund sector data from wind api
     """
 
-    def query_and_insert(self, type_, freq, codes):
-        with get_session() as ss:
-            max_dt, = ss.query(
-                sa.func.max(fund.SectorSnapshot.trade_dt).label('max_dt')
-            ).filter(fund.SectorSnapshot.type_ == type_).one()
-        if max_dt is not None:
-            max_dt = pd.to_datetime(max_dt)
-        else:
-            max_dt = pd.Timestamp('2009-12-30')
+    def query_and_insert(self, freq, codes):
+        for code in codes:
+            with get_session() as ss:
+                max_dt, = ss.query(
+                    sa.func.max(fund.SectorSnapshot.trade_dt).label('max_dt')
+                ).filter(fund.SectorSnapshot.sector_code == code).one()
+            if max_dt is not None:
+                max_dt = pd.to_datetime(max_dt)
+            else:
+                max_dt = pd.Timestamp('2009-12-30')
 
-        for dt in (t for t in get_dates(freq) if max_dt < t <= get_last_td()):
-            sector_list = pd.concat((self.query_wind(
-                api_name='wset', tablename="sectorconstituent", usedf=True,
-                options=f"date={dt:%Y-%m-%d};sectorid={sector};field=wind_code",
-            ).assign(trade_dt=dt, sector_code=sector, type_=sector[:4]) for sector in codes))
-            self.insert_data(sector_list, fund.SectorSnapshot, msg=f'{dt:%Y%m%d}')
+            for dt in (t for t in get_dates(freq) if max_dt < t <= get_last_td()):
+                sector_list = self.query_wind(
+                    api_name='wset', tablename="sectorconstituent",
+                    options=f"date={dt:%Y-%m-%d};sectorid={code};field=wind_code",
+                ).assign(trade_dt=dt, sector_code=code, type_=code[:4])
+                self.insert_data(sector_list, fund.SectorSnapshot, msg=f'{dt:%Y%m%d} - {code}')
 
     def run(self, *args, **kwargs):
         # '200101x'按底层资产分类
         self.query_and_insert(
-            '2001', const.FreqEnum.M,
+            const.FreqEnum.M,
             (
                 '2001010101000000', '2001010102000000', '2001010103000000', '2001010201000000',
-                '2001010202000000', '2001010203000000', '2001010204000000', '2001010301000000',
-                '2001010302000000', '2001010303000000', '2001010304000000', '2001010305000000',
-                '2001010306000000', '2001010400000000'
+                '2001010202000000', '2001010203000000', '1000011486000000',  # '2001010204000000',
+                '2001010301000000', '2001010302000000', '2001010303000000', '2001010304000000',
+                '1000010419000000', '1000011421000000',  # '2001010305000000', '2001010306000000',
+                '2001010400000000'
             )
         )
         # '1000x'特殊分类
         self.query_and_insert(
-            '1000', const.FreqEnum.Q,
+            const.FreqEnum.Q,
             # 定期开放,委外,机构,可转债
             ("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000")
         )
+
+
+class FundPortfolioAsset(CrawlerJob):
+    """
+    基金资产配置数据
+    [2020/6/18] Only 规模数据
+    w.wss("000001.OF,166005.OF,004232.OF", "prt_totalasset,prt_fundnetasset_total","unit=1;rptDate=20191231")
+    """
+
+    def run(self, *args, **kwargs):
+        mapping = get_wind_conf('crawler_mf_prf')
+        with get_session() as ss:
+            max_dt, = ss.query(sa.func.max(fund.PortfolioAsset.end_date)).one()
+            if max_dt is not None:
+                max_dt = min((pd.to_datetime(max_dt), pd.Timestamp.now() - QuarterEnd(n=1)))
+            else:
+                max_dt = pd.Timestamp('2009-12-30')
+
+            for quarter_end in pd.date_range(max_dt, pd.Timestamp.now(), freq='Q'):
+                fund_list = [f for f, *_ in ss.query(
+                    fund.Description.wind_code
+                ).filter(
+                    fund.Description.setup_date < quarter_end,
+                    fund.Description.maturity_date >= quarter_end,
+                    fund.Description.is_initial == 1,
+                ).all()]
+                for i, funds in enumerate(chunk(fund_list, 1499), start=1):
+                    data = self.query_wind(
+                        api_name='wss',
+                        codes=funds,
+                        fields=[*mapping['fields'].keys()],
+                        col_mapping=mapping['fields']
+                    )
+                    self.insert_data(
+                        data.assign(end_date=quarter_end, wind_code=data.index),
+                        fund.PortfolioAsset,
+                        msg=f'{quarter_end} - {min(i * 1499 / 8000, 1) * 100:.2f}%'
+                    )
+        self.clean_duplicates(fund.PortfolioAsset, [fund.PortfolioAsset.wind_code, fund.PortfolioAsset.end_date])

@@ -9,7 +9,7 @@ import pandas as pd
 import sqlalchemy as sa
 
 from ._base import *
-from .. import const
+from ..const import FreqEnum, AssetEnum
 from ..database import get_last_td, get_dates, FactorDBTool, get_price
 from ..database.pg_models import index
 from ..factor_pool import stock_classic
@@ -33,8 +33,6 @@ class StockFF3Factor(BaseJob):
 
     def run(self, start=None, end=None, *args, **kwargs):
         # make sure start is not None
-        if start is None:
-            start = self.ff3.start_date
         if end is None:
             end = get_last_td()
 
@@ -66,8 +64,8 @@ class StockFF3Factor(BaseJob):
         else:
             # else table has data, then drop last 7 days data
             real_start = max((
-                pd.Timestamp(start),
-                pd.to_datetime(real_start) - pd.Timedelta(days=7)
+                pd.Timestamp(start) if start is not None else self.ff3.start_date,
+                pd.to_datetime(real_start) - pd.Timedelta(days=7),
             ))
             self.get_logger().debug(f'`max_dt` is not None, run from {real_start:%Y-%m-%d}.')
             with get_session() as session:
@@ -76,7 +74,7 @@ class StockFF3Factor(BaseJob):
                     index.DerivativePrice.trade_dt > real_start
                 ).delete(synchronize_session='fetch')
 
-        month_end = max((t for t in get_dates(const.FreqEnum.M) if t <= real_start))
+        month_end = max((t for t in get_dates(FreqEnum.M) if t <= real_start))
         if real_start == month_end:
             self.io.localized_snapshot(month_end, if_exist=1)
         factor_val = self.io.fetch_snapshot(month_end)
@@ -94,8 +92,8 @@ class StockFF3Factor(BaseJob):
                 columns=['benchmark_code', 'close_']
             ).set_index('benchmark_code').squeeze()
 
-        trade_dates = (t for t in get_dates(const.FreqEnum.D) if real_start < t <= pd.Timestamp(end))
-        for dt in trade_dates:
+        dates = (t for t in get_dates(FreqEnum.D) if real_start < t <= pd.Timestamp(end if end else get_last_td()))
+        for dt in dates:
             self.get_logger().debug(f'run at {dt:%Y-%m-%d}.')
             cur_close = self.get_stock_close(dt)
             factor = factor_val.assign(ret=cur_close.div(stock_close) - 1)
@@ -106,7 +104,7 @@ class StockFF3Factor(BaseJob):
                 model=index.DerivativePrice, msg=f'{dt:%Y-%m-%d}'
             )
 
-            if dt in get_dates(const.FreqEnum.M):
+            if dt in get_dates(FreqEnum.M):
                 self.get_logger().debug(f'localized factor and close at {dt:%Y-%m-%d}.')
                 month_end = dt
                 self.io.localized_snapshot(dt, if_exist=1)
@@ -116,8 +114,5 @@ class StockFF3Factor(BaseJob):
 
     @staticmethod
     def get_stock_close(dt):
-        price = get_price(
-            const.AssetEnum.STOCK, start=dt, end=dt,
-            fields=['close_', 'adj_factor']
-        ).set_index('wind_code')
+        price = get_price(AssetEnum.STOCK, start=dt, end=dt).set_index('wind_code')
         return price['close_'].mul(price['adj_factor'])

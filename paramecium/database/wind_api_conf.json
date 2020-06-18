@@ -99,5 +99,11 @@
       "FUND_SMFTYPE": "grad_type",
       "FUND_ETFWINDCODE": "etf_code"
     }
+  },
+  "crawler_mf_prf": {
+    "fields": {
+      "PRT_TOTALASSET": "total_asset",
+      "PRT_FUNDNETASSET_TOTAL": "net_asset"
+    }
   }
 }

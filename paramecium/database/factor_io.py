@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from ._postgres import *
 from .comment import get_dates, get_last_td
 from .pg_models import monitors
+from ..exc import DataExistError
 from ..interface import AbstractFactorIO, AbstractFactor
 
 
@@ -41,12 +42,18 @@ class FactorDBTool(AbstractFactorIO):
 
     def __init__(self, factor: 'AbstractFactor'):
         super().__init__(factor)
-        self.table = get_or_create_table(
-            _sql_name(self._factor),
-            sa.Column('wind_code', sa.String(40), index=True),
-            sa.Column('trade_dt', sa.Date, index=True),
-            *(sa.Column(name, self.__sql_mapping[tp_]) for name, tp_ in self._factor.field_types.items())
-        )
+        self.__table = None
+
+    @property
+    def table(self):
+        if self.__table is None:
+            self.__table = get_or_create_table(
+                _sql_name(self._factor),
+                sa.Column('wind_code', sa.String(40), index=True),
+                sa.Column('trade_dt', sa.Date, index=True),
+                *(sa.Column(name, self.__sql_mapping[tp_]) for name, tp_ in self._factor.field_types.items())
+            )
+        return self.__table
 
     def localized_snapshot(self, dt, if_exist=1):
         """
@@ -63,7 +70,7 @@ class FactorDBTool(AbstractFactorIO):
                 )
             elif session.query(self.table).filter(*filters).first():
                 msg = f"factor data at {dt:%Y-%m-%d} is exist, please turn into replace mode or check your code!"
-                raise KeyError(msg)
+                raise DataExistError(msg)
 
         self.logger.info(f'compute factor at {dt:%Y-%m-%d}')
         snapshot = self._factor.compute(dt)
@@ -79,8 +86,8 @@ class FactorDBTool(AbstractFactorIO):
                 session.query(
                     *(self.table.c[col] for col in (*self._factor.field_types.keys(), 'wind_code'))
                 ).filter(self.table.c.trade_dt == dt).all()
-            ).set_index('wind_code')
-        return snapshot.astype(self._factor.field_types, errors='ignore')
+            ).fillna(np.nan)
+        return snapshot.set_index('wind_code').astype(self._factor.field_types, errors='ignore')
 
     def get_calc_dates(self, start, end, freq):
         # real start date
