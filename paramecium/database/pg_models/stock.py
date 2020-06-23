@@ -12,24 +12,21 @@ codes.to_clipboard(index=False)
 """
 import sqlalchemy as sa
 
-from .._postgres import *
+from ._base import *
 
 
-class AShareDescription(BaseORM):
+class AShareDescription(AbstractDesc):
     """
     A股基本资料 AShareDescription
     """
     __tablename__ = 'stock_org_description'
 
-    wind_code = sa.Column(sa.String(10), primary_key=True)  # TS代码
-    short_name = sa.Column(sa.String(100))  # 证券简称
     pinyin = sa.Column(sa.String(100))  # 简称拼音
     isin_code = sa.Column(sa.String(40))  # ISIN代码
     exchange = sa.Column(sa.String(4))  # 交易所,SSE:上交所,SZSE:深交所
     list_board = sa.Column(sa.String(10))  # 上市板类型
     list_dt = sa.Column(sa.Date, index=True)  # 上市日期
     delist_dt = sa.Column(sa.Date, index=True)  # 退市日期
-    currency = sa.Column(sa.String(40))  # 货币代码
     is_shsc = sa.Column(sa.Integer)  # 是否在沪股通或深港通范围内,0:否;1:沪股通;2:深股通
     comp_code = sa.Column(sa.String(100))  # 公司代码
     comp_name = sa.Column(sa.String(100))  # 公司中文名称
@@ -37,10 +34,12 @@ class AShareDescription(BaseORM):
 
 
 class AShareEODPrice(BaseORM):
-    """ 中国A股日行情 """
+    """
+    中国A股日行情
+    """
     __tablename__ = 'stock_org_price'
 
-    oid = gen_oid_col()
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
     open_ = sa.Column(sa.Float)  # 开盘价(元) open
@@ -58,7 +57,7 @@ class AShareSuspend(BaseORM):
     """ A股停复牌信息 """
     __tablename__ = 'stock_org_suspend'
 
-    oid = gen_oid_col()
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     suspend_date = sa.Column(sa.Date, index=True)  # 停牌日期
     suspend_type = sa.Column(sa.Integer, index=True)  # 停牌类型代码
@@ -74,7 +73,7 @@ class AShareEODDerivativeIndicator(BaseORM):
     """ A股日行情估值指标 """
     __tablename__ = 'stock_org_eod_derivative'
 
-    oid = gen_oid_col()
+    oid = gen_oid()
 
     wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
     trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
@@ -116,7 +115,7 @@ class AShareEODDerivativeIndicator(BaseORM):
     net_increase_cash_equ_lyr = sa.Column(sa.Float)  # 现金及现金等价物净增加额(LYR) net_incr_cash_cash_equ_lyr
 
 
-class AShareSector(BaseORM):
+class AShareSector(AbstractSector):
     """
     A股板块信息
     - 中证行业成分(2016): http://tushare.xcsc.com:7173/document/2?doc_id=10212
@@ -124,63 +123,16 @@ class AShareSector(BaseORM):
     """
     __tablename__ = 'stock_org_sector'
 
-    oid = gen_oid_col()
-
-    wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
-    sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code
-    entry_dt = sa.Column(sa.Date)  # 纳入日期 entry_dt
-    remove_dt = sa.Column(sa.Date)  # 剔除日期 remove_dt
-
-    uk_ = sa.UniqueConstraint(wind_code, sector_code, entry_dt, name=f"uk_{__tablename__}")
+    uk_ = sa.UniqueConstraint('wind_code', 'sector_code', 'entry_dt', name=f"uk_{__tablename__}")
 
 
-class ASharePreviousName(BaseORM):
+class ASharePreviousName(AbstractSector):
     """
     A股曾用名
-
-    目前从jqdata下载并更新
-    ==== jqdata code ===========================
-    from itertools import groupby, product
-    import pandas as pd
-    import seaborn as sns
-    from jqfactor import analyze_factor, get_factor_values
-    from jqdata import finance
-    from sqlalchemy import func as sa_func
-
-    stk_name_history = []
-    max_id = finance.run_query(query(sa_func.max(finance.STK_NAME_HISTORY.id).label('max_id'))).squeeze()
-
-    for start, end in zip(range(0, (max_id//2500 + 1)*2500, 2500), range(2500, (max_id//2500 + 2)*2500, 2500)):
-        stk_name_history.append(finance.run_query(
-            query(
-                finance.STK_NAME_HISTORY.id,
-                finance.STK_NAME_HISTORY.code,
-                finance.STK_NAME_HISTORY.new_name,
-                finance.STK_NAME_HISTORY.start_date,
-                finance.STK_NAME_HISTORY.pub_date,
-                finance.STK_NAME_HISTORY.reason,
-            ).filter(finance.STK_NAME_HISTORY.id>=start, finance.STK_NAME_HISTORY.id<end)
-        ).fillna(np.nan).set_index('id'))
-    pd.concat(stk_name_history).to_csv(f'stock_name_history_{pd.Timestamp.now():%Y%m%d}.csv')
-
-    ==== local code ===========================
-    import pandas as pd
-    from paramecium.database.utils import get_sql_engine
-    from paramecium.utils.data_api import get_tushare_api
-    api = get_tushare_api()
-    stock_name = pd.read_csv("others/stock_name_history_20200602.csv", parse_dates=['start_date'])
-    after = stock_name.sort_values('start_date').groupby('code').apply(lambda df: df.assign(end_date=df['start_date'].shift(-1)-pd.Timedelta(days=1)))
-    wind_codes = api.stock_basic(fields='ts_code').squeeze()
-    wind_codes.index = wind_codes.map(lambda x: x[:6])
-    after.loc[:, 'code'] = after['code'].map(lambda x: x[:6]).map(wind_codes)
-    after.dropna(subset=['code']).loc[:, ['code', 'new_name', 'start_date', 'pub_date', 'reason', 'end_date']].to_sql('stock_jq_previous_name', get_sql_engine(), index=False)
     """
-    __tablename__ = 'stock_jq_previous_name'
+    __tablename__ = 'stock_org_previous_name'
 
-    oid = gen_oid_col()
-
-    wind_code = sa.Column(name='code', type_=sa.String(10), index=True)  # ts代码 ts_code
-    new_name = sa.Column(name='new_name', type_=sa.String(40), index=True)  # 中证行业代码 index_code
-    entry_dt = sa.Column(name='start_date', type_=sa.Date)  # 纳入日期 entry_dt
-    remove_dt = sa.Column(name='end_date', type_=sa.Date)  # 剔除日期 remove_dt
     ann_date = sa.Column(name='pub_date', type_=sa.Date)  # 公告日期 remove_dt
+    change_reason = sa.Column(sa.String(10), index=True)
+
+    uk_ = sa.UniqueConstraint('wind_code', 'sector_code', 'entry_dt', name=f"uk_{__tablename__}")

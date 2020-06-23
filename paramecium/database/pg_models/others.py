@@ -3,8 +3,9 @@
 @Time: 2020/5/28 10:54
 @Author: Sue Zhu
 """
-from .._postgres import *
 import sqlalchemy as sa
+
+from .._postgres import *
 
 
 class TradeCalendar(BaseORM):
@@ -22,10 +23,11 @@ class TradeCalendar(BaseORM):
 class EnumIndustryCode(BaseORM):
     __tablename__ = 'enum_industry_code'
 
-    code = sa.Column(name='industry_code', type_=sa.String(40), primary_key=True)
-    name = sa.Column(name='industry_name', type_=sa.String(40))
-    level_num = sa.Column(sa.Integer)
+    industry_code = sa.Column(type_=sa.String(40), primary_key=True)
+    industry_name = sa.Column(type_=sa.String(40))
+    level_num = sa.Column(sa.Integer, index=True)
     memo = sa.Column(sa.String)
+    used = sa.Column(sa.Integer, index=True)
 
 
 class InterestRate(BaseORM):

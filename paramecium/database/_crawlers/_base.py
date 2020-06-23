@@ -35,6 +35,9 @@ class CrawlerJob(BaseJob):
 
     @staticmethod
     def query_wind(api_name, col_mapping=None, dt_cols=None, **func_kwargs):
+        if 'fields' in func_kwargs.keys():
+            func_kwargs['fields'] = ','.join(func_kwargs['fields']).lower()
+
         api = getattr(w, api_name)
         error, data = api(**func_kwargs, usedf=True)
         if error:
@@ -43,6 +46,8 @@ class CrawlerJob(BaseJob):
             data = data.fillna(np.nan)
             if col_mapping:
                 data = data.rename(columns=col_mapping)
+            else:
+                data = data.rename(columns=str.lower)
             for col in (dt_cols if dt_cols else []):
                 data.loc[:, col] = pd.to_datetime(data[col].where(lambda ser: ser > '1899-12-30', pd.Timestamp.max))
             return data

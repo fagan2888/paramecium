@@ -40,7 +40,7 @@ class StockUniverse(AbstractUniverse):
             query_st = pd.DataFrame(
                 session.query(
                     stock.ASharePreviousName.wind_code,
-                    stock.ASharePreviousName.new_name
+                    stock.ASharePreviousName.sector_code
                 ).filter(
                     stock.ASharePreviousName.entry_dt <= trade_dt,
                     stock.ASharePreviousName.remove_dt >= trade_dt

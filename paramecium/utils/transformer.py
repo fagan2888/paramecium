@@ -7,7 +7,7 @@ from functools import partial
 
 import numpy as np
 
-from paramecium.interface import AbstractTransformer
+from ..interface import AbstractTransformer
 
 
 class ScaleMinMax(AbstractTransformer):
@@ -44,18 +44,25 @@ class ScaleNormalize(AbstractTransformer):
 
 
 class OutlierMAD(AbstractTransformer):
-    """ Clean Outlier with `Median Absolute Deviation(MAD)` """
+    """
+    Clean Outlier with `Median Absolute Deviation(MAD)`
+    https://www.rdocumentation.org/packages/stats/versions/3.5.2/topics/mad
+
+    The default constant = 1.4826 (approximately \(1/\Phi^{-1}(\frac 3 4)\) = 1/qnorm(3/4)) ensures consistency,
+    i.e., $$E[mad(X_1,\dots,X_n)] = \sigma$$ for \(X_i\) distributed as \(N(\mu, \sigma^2)\) and large \(n\).
+    """
 
     __slots__ = ['_is_drop', '_median', '_mad']
 
-    def __init__(self, drop=False):
+    def __init__(self, drop=False, constant=1.4826):
         self._is_drop = drop
+        self._const = constant
         self._median = None
         self._mad = None
 
     @property
     def _sigma(self):
-        return self._mad * 1.4826
+        return self._mad * self._const
 
     def fit(self, raw_data):
         self._median = np.nanmedian(raw_data, axis=0)

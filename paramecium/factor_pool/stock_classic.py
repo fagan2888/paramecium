@@ -8,10 +8,10 @@ from functools import partial
 import numpy as np
 import pandas as pd
 
-from paramecium.const import AssetEnum
-from paramecium.database import stock
-from paramecium.interface import AbstractFactor
-from paramecium.utils.transformer import OutlierMAD, ScaleMinMax
+from ..const import AssetEnum
+from ..database import stock
+from ..interface import AbstractFactor
+from ..utils.transformer import OutlierMAD, ScaleMinMax
 
 
 class FamaFrench(AbstractFactor):
@@ -35,23 +35,17 @@ class FamaFrench(AbstractFactor):
     def compute(self, dt):
         # stock match case
         universe = self.universe.get_instruments(dt)
-        # sector = get_sector(self.asset_type, valid_dt=dt, sector_type=SectorEnum.STOCK_SEC_ZZ).set_index('wind_code')
-        # sector = sector['sector_code'].map(lambda x: x[:4] if x else x).filter(universe, axis=0)
 
         # get derivative data
         derivative = stock.get_derivative_indicator(
             trade_dt=f'{dt:%Y%m%d}',
             fields=['mv', 'pe_ttm'],
-        ).rename(columns={'mv': 'capt'}).filter(universe, axis=0).fillna({
-            'pe_ttm': 0
-        }).dropna()  # .reindex(index=sector.index)
+        ).rename(columns={'mv': 'capt'}).filter(universe, axis=0).fillna({'pe_ttm': 0})
 
-        # size value is log10(mv)
+        # calculate and clean outliers.
         derivative['size'] = np.log10(derivative['capt'])
         derivative['value'] = 1 / derivative['pe_ttm']
-        for proc in (OutlierMAD(),):
-            derivative.loc[:, ['size', 'value']] = proc.fit_transform(derivative.loc[:, ['size', 'value']].values)
-        # derivative = derivative.fillna(derivative.groupby(sector)[['size', 'value']].mean())
+        derivative.loc[:, ['size', 'value']] = OutlierMAD().fit_transform(derivative.loc[:, ['size', 'value']].values)
 
         # re scale data with robust-scale to make style identify easier
         derivative.loc[:, 'size'] = ScaleMinMax(

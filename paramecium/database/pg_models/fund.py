@@ -5,39 +5,41 @@
 """
 import sqlalchemy as sa
 
-from .._postgres import *
+from ._base import *
 
 
-class Description(BaseORM):
+class Description(AbstractDesc):
     __tablename__ = 'mf_org_description'
 
-    wind_code = sa.Column(sa.String(40), primary_key=True)  # 代码ts_code
-    short_name = sa.Column(sa.String(100))  # 证券简称name
     full_name = sa.Column(sa.String(100))
-    currency = sa.Column(sa.String(10))
     management = sa.Column(sa.String(100))  # 管理人
+    management_id = sa.Column(sa.String(100))
     custodian = sa.Column(sa.String(100))  # 托管人
+    custodian_id = sa.Column(sa.String(100))
     exchange = sa.Column(sa.String(10))
 
     is_initial = sa.Column(sa.Integer, index=True)
+    is_index = sa.Column(sa.Integer, index=True)
     invest_type = sa.Column(sa.String(40))  # 投资类型fund_type
     invest_style = sa.Column(sa.String(40))  # 投资风格invest_type
-    fund_type = sa.Column(sa.String(40))  # 基金类型type
+    fund_type = sa.Column(sa.String(40))  # 基金类型type开放/封闭
 
     setup_date = sa.Column(sa.Date, index=True)  # 成立日期found_date
     maturity_date = sa.Column(sa.Date, index=True)  # 到期日期due_date
-    status = sa.Column(sa.String(1))  # 存续状态D摘牌 I发行 L已上市
+    status = sa.Column(sa.String(9))  # 存续状态D摘牌 I发行 L已上市
     issue_date = sa.Column(sa.Date)  # 发行日期
     list_date = sa.Column(sa.Date)  # 上市时间
     delist_date = sa.Column(sa.Date)  # 退市日期
+    ann_date = sa.Column(sa.Date)
 
-    benchmark = sa.Column(sa.String)  # 业绩比较基准
+    benchmark = sa.Column(sa.Text)  # 业绩比较基准
     invest_scope = sa.Column(sa.Text)
     invest_object = sa.Column(sa.Text)
+    invest_strategy = sa.Column(sa.Text)
 
     fee_ratio_manage = sa.Column(sa.Float)  # m_fee  # 管理费
     fee_ratio_custodian = sa.Column(sa.Float)  # c_fee  # 托管费
-    fee_ratio_sale = sa.Column(sa.Float)
+    # fee_ratio_sale = sa.Column(sa.Float)
     purchase_start_dt = sa.Column(sa.Date)  # 日常申购起始日
     redemption_start_dt = sa.Column(sa.Date)  # 日常赎回起始日
     min_purchase_amt = sa.Column(sa.Float)
@@ -61,43 +63,48 @@ class WebSaleList(BaseORM):
 class Nav(BaseORM):
     __tablename__ = 'mf_org_nav'
 
-    oid = gen_oid_col()
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(40), index=True)
     ann_date = sa.Column(sa.Date)
     trade_dt = sa.Column(sa.Date, index=True)
-    unit_nav = sa.Column(sa.Float)  #
+    unit_nav = sa.Column(sa.Float)
     acc_nav = sa.Column(sa.Float)
     adj_factor = sa.Column(sa.Float)
 
     net_asset = sa.Column(sa.Float)  # float Y 资产净值
-    total_netasset = sa.Column(sa.Float)  # float Y 合计资产净值
+    is_merge = sa.Column(sa.Integer)
+    total_asset = sa.Column(sa.Float)  # float Y 合计资产净值
+    is_ex_dividend = sa.Column(sa.Integer, index=True)
 
 
-class ManagerHistory(BaseORM):
-    __tablename__ = 'mf_org_manager'
+class FundBenchmark(AbstractPrice):
+    __tablename__ = 'mf_org_benchmark_eod'
 
-    oid = gen_oid_col()
-    wind_code = sa.Column(sa.String(40), index=True)  # ts_code str Y 基金代码
+
+class ManagerHistory(AbstractSector):
+    __tablename__ = 'mf_org_manager_history'
+
     ann_date = sa.Column(sa.Date)  # ann_date str Y 公告日期
-    manager_name = sa.Column(sa.String(40))  # name str Y 基金经理姓名
-    start_dt = sa.Column(sa.Date, index=True)  # str Y 任职日期begin_date
-    end_dt = sa.Column(sa.Date)  # str Y 离任日期end_date
-
-    uk = sa.UniqueConstraint(wind_code, manager_name, start_dt)
+    uk_ = sa.UniqueConstraint('wind_code', 'sector_code', 'entry_dt', name=f"uk_{__tablename__}")
 
 
-class Sector(BaseORM):
+class ManagerInfo(BaseORM):
+    __tablename__ = 'mf_org_manager_info'
+
+    manager_id = sa.Column(sa.String(40), primary_key=True)
+    gender = sa.Column(sa.String(100))
+    birth_year = sa.Column(sa.String(100))
+    education = sa.Column(sa.String(100))
+    nationality = sa.Column(sa.String(100))
+    resume = sa.Column(sa.Text)
+
+
+class Sector(AbstractSector):
     """
     基金板块信息
     """
     __tablename__ = 'mf_org_sector'
-
-    oid = gen_oid_col()
-
-    wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
-    sector_code = sa.Column(sa.String(40), index=True)  # 中证行业代码 index_code
-    entry_dt = sa.Column(sa.Date, index=True)  # 纳入日期 entry_dt
-    remove_dt = sa.Column(sa.Date)  # 剔除日期 remove_dt
+    uk_ = sa.UniqueConstraint('wind_code', 'sector_code', 'entry_dt', name=f"uk_{__tablename__}")
 
 
 class SectorSnapshot(BaseORM):
@@ -106,7 +113,7 @@ class SectorSnapshot(BaseORM):
     """
     __tablename__ = 'mf_org_sector_m'
 
-    oid = gen_oid_col()
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(40), index=True)
     sector_code = sa.Column(sa.String(40), index=True)
     trade_dt = sa.Column(sa.Date, index=True)
@@ -120,7 +127,7 @@ class Connections(BaseORM):
     """
     __tablename__ = 'mf_org_connections'
 
-    oid = gen_oid_col()
+    oid = gen_oid()
     connect_type = sa.Column(sa.String(1), index=True)  # 关系代码 {'F':联接基金, 'A':分级A, 'B':分级B}
     parent_code = sa.Column(sa.String(40), index=True)
     child_code = sa.Column(sa.String(40))
@@ -147,7 +154,7 @@ class PortfolioAsset(BaseORM):
     """
     __tablename__ = 'mf_org_portfolio'
 
-    oid = gen_oid_col()
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(40), index=True)  # S_INFO_WINDCODE Wind代码
     end_date = sa.Column(sa.Date, index=True)  # F_PRT_ENDDATE 截止日期
     total_asset = sa.Column(sa.Float)  # F_PRT_TOTALASSET 资产总值(元)
@@ -180,7 +187,7 @@ class PortfolioAssetBond(BaseORM):
     """
     __tablename__ = 'mf_org_bond'
 
-    oid = gen_oid_col()
+    oid = gen_oid()
     wind_code = sa.Column(sa.String(40), index=True)  # S_INFO_WINDCODE Wind代码
     end_date = sa.Column(sa.Date, index=True)  # F_PRT_ENDDATE 截止日期
     government = sa.Column(sa.Float)  # F_PRT_GOVBOND 持有国债市值(元)

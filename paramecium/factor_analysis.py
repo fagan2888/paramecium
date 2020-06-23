@@ -3,6 +3,7 @@
 @Time: 2020/6/1 9:44
 @Author: Sue Zhu
 """
+import abc
 from functools import partial, lru_cache
 
 import numpy as np
@@ -10,8 +11,8 @@ import pandas as pd
 import scipy.stats as sc_stats
 
 from . import const
-from .database import FactorDBTool, get_price
-from .interface import AbstractFactor, AbstractUniverse
+from .database import FactorDBTool, get_price, get_dates
+from .interface import AbstractFactor
 from .utils import transformer as tf, price_stats as stats
 
 
@@ -32,34 +33,28 @@ def _cut_or_nan(val, q):
         return pd.Series(index=val.index)
 
 
-class SingleFactorAnalyzer(object):
-    """
-    单因子分析
-    """
+class AbstractFactorAnalyzer(metaclass=abc.ABCMeta):
 
     def __init__(
-            self, factor: AbstractFactor, transformers=(tf.OutlierMAD(), tf.ScaleNormalize()),
-            universe: 'AbstractUniverse' = None,
-            ic_method='spearman', group_quantile=5
+            self, transformers=(tf.OutlierMAD(), tf.ScaleNormalize()),
+            universe: 'AbstractUniverse' = None, ic_method='spearman', group_quantile=5
     ):
-        self.obj = factor
-        self.io = FactorDBTool(self.obj)
-
         self.transformers = transformers
         self.universe = universe
         self.ic_method = ic_method
         self.group_quantile = group_quantile
 
-    @lru_cache(maxsize=4)
-    def get_price(self, dt):
-        return _get_adj_price(dt, asset_type=self.obj.asset_type)
+    @abc.abstractmethod
+    def get_ret(self, start, end):
+        return pd.Series()
 
-    @lru_cache(maxsize=4)
+    @abc.abstractmethod
     def get_factor(self, dt):
-        val = self.io.fetch_snapshot(dt)
-        if self.universe is not None:
-            val = val.filter(self.universe.get_instruments(dt), axis=0)
-        return val
+        return pd.Series()
+
+    @property
+    def name(self):
+        return ""
 
     @staticmethod
     def describe_stats(val):
@@ -88,8 +83,8 @@ class SingleFactorAnalyzer(object):
 
         return val.apply(_agg).T
 
-    def run(self, output, start_date=None, end_date=None, freq=const.FreqEnum.M, shift=1):
-        dates = [t for t in self.io.get_calc_dates(start_date, end_date, freq)]
+    def run(self, output, start_date, end_date=None, freq=const.FreqEnum.M, shift=1):
+        dates = [t for t in get_dates(freq) if start_date <= t <= (end_date if end_date else pd.Timestamp.now())]
 
         desc, ic, reg, grouped = dict(), dict(), dict(), dict()
 
@@ -100,8 +95,6 @@ class SingleFactorAnalyzer(object):
             factor_val = self.get_factor(t)
             if factor_val.shape[0] < self.group_quantile * 1.5:
                 continue
-            ret = self.get_price(dates[i + shift]).div(self.get_price(dates[i + shift - 1])).sub(1).dropna()
-            ret = ret.reindex(index=factor_val.index).fillna(0)
 
             # 描述性统计
             desc[t] = self.describe_stats(factor_val)
@@ -113,6 +106,11 @@ class SingleFactorAnalyzer(object):
 
             # 分级靠档
             rank_val = factor_val.apply(_cut_or_nan, q=self.group_quantile).dropna(axis=1, how='all')
+
+            ret = self.get_ret(dates[i + shift - 1], dates[i + shift])
+            if ret.shape[0] < 1:
+                break
+            ret = ret.reindex(index=factor_val.index).fillna(0)
 
             # ic test and reg test
             ic[t] = self.ic_test(factor_val, ret)
@@ -127,7 +125,7 @@ class SingleFactorAnalyzer(object):
         with pd.ExcelWriter(output, datetime_format='yyyy/m/d') as excel:
             # info
             pd.Series({
-                '因子': self.io.table.key,
+                '因子': self.name,
                 '板块': self.universe,
                 '开始日期': min(dates),
                 '结束日期': max(dates),
@@ -161,13 +159,13 @@ class SingleFactorAnalyzer(object):
             reg_ts = pd.concat(reg, names=['trade_dt', 'field_name'])
             reg_ts.reset_index().to_excel(excel, '截面回归检验_详情', index=False)
 
+            reg_ret_pvt = reg_ts['ret'].unstack('field_name')
             reg_summary = pd.DataFrame({
-                'Mean Ret': reg_ts['ret'].unstack('field_name').mean(),
-                'T-Test': sc_stats.ttest_1samp(
-                    reg_ts['ret'].unstack('field_name'), popmean=0, axis=0, nan_policy='omit').statistic,
+                'Mean Ret': reg_ret_pvt.mean(),
+                'T-Test': sc_stats.ttest_1samp(reg_ret_pvt, popmean=0, axis=0, nan_policy='omit').statistic,
                 'Mean T-Stat': reg_ts['t'].unstack('field_name').mean(),
-                'AutoCorr1': reg_ts['ret'].unstack('field_name').apply(pd.Series.autocorr, lag=1),
-                'AutoCorr2': reg_ts['ret'].unstack('field_name').apply(pd.Series.autocorr, lag=2)
+                'AutoCorr1': reg_ret_pvt.apply(pd.Series.autocorr, lag=1),
+                'AutoCorr2': reg_ret_pvt.apply(pd.Series.autocorr, lag=2)
             }).T
             reg_summary.to_excel(excel, sum_sheet, startrow=sum_rows)
             sum_rows += ic_summary.shape[0] + 3
@@ -186,3 +184,47 @@ class SingleFactorAnalyzer(object):
                 )
             ).to_excel(excel, '分层收益', merge_cells=False)
             grouped_ts.reset_index().to_excel(excel, '分层收益_详情', index=False)
+
+            # 最后一期结果
+            try:
+                latest = rank_val.where(rank_val.eq(f'L{self.group_quantile:02.0f}')).stack().reset_index()
+                latest.columns = ['wind_code', 'field_name', 'label']
+                latest.iloc[:, :-1].to_excel(excel, '最后一期标的', index=False)
+            except Exception as e:
+                print('error happend when save latest asset.', repr(e))
+
+
+class SingleFactorAnalyzer(AbstractFactorAnalyzer):
+    """
+    单因子分析
+    """
+
+    def __init__(self, factor: 'AbstractFactor', transformers=(tf.OutlierMAD(), tf.ScaleNormalize()),
+                 universe: 'AbstractUniverse' = None, ic_method='spearman', group_quantile=5):
+        self.obj = factor
+        self.io = FactorDBTool(self.obj)
+
+        super().__init__(transformers, universe, ic_method, group_quantile)
+
+    @lru_cache(maxsize=4)
+    def get_price(self, dt):
+        return _get_adj_price(dt, asset_type=self.obj.asset_type)
+
+    def get_ret(self, start, end):
+        return self.get_price(end).div(self.get_price(start)).sub(1).dropna()
+
+    @property
+    def name(self):
+        return self.io.table.key
+
+    @lru_cache(maxsize=4)
+    def get_factor(self, dt):
+        val = self.io.fetch_snapshot(dt)
+        if self.universe is not None:
+            val = val.filter(self.universe.get_instruments(dt), axis=0)
+        return val
+
+    def run(self, output, start_date=None, end_date=None, freq=const.FreqEnum.M, shift=1):
+        if start_date is None:
+            start_date = self.obj.start_date
+        super().run(output, start_date, end_date, freq, shift)

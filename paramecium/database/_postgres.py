@@ -4,7 +4,7 @@
 @Author: Sue Zhu
 """
 __all__ = [
-    'BaseORM', 'gen_oid_col', 'gen_update',
+    'BaseORM', 'gen_oid', 'gen_update',
     'get_sql_engine', 'get_session', 'try_commit',
     'get_or_create_table', 'create_all_table', 'upsert_data', 'bulk_insert', 'clean_duplicates'
 ]
@@ -45,7 +45,7 @@ def try_commit(session, on_doing, success=''):
         session.rollback()
 
 
-def gen_oid_col():
+def gen_oid():
     return sa.Column('oid', pg.UUID, server_default=sa.text('uuid_generate_v4()'), primary_key=True)
 
 
@@ -95,7 +95,7 @@ def create_all_table():
             select wind_code, trade_dt, close_
             from index_org_price p1
             union all 
-            select benchmark_code, trade_dt, close_
+            select wind_code, trade_dt, close_
             from index_derivative_price
             """
         )
@@ -109,7 +109,7 @@ def get_or_create_table(name, *columns, **kwargs):
         if columns:
             table = sa.Table(
                 name, BaseORM.metadata,
-                gen_oid_col(), gen_update(), *columns,
+                gen_oid(), gen_update(), *columns,
                 keep_existing=True, **kwargs
             )
             table.create(bind=engine)

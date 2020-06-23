@@ -30,6 +30,18 @@ class AShareDescription(CrawlerJob):
         self.insert_data(records=stock_info, model=model, ukeys=model.get_primary_key())
 
 
+class ASharePreviousName(CrawlerJob):
+    TS_ENV = 'tushare_dev'
+
+    def run(self, *args, **kwargs):
+        with get_session() as ss:
+            codes = [code for code, *_ in ss.query(stock.AShareDescription.wind_code).all()]
+
+        for code in codes:
+            ts_data = self.get_tushare_data('previous_name', ts_code=code)
+            self.insert_data(ts_data, stock.ASharePreviousName, stock.ASharePreviousName.uk_.columns)
+
+
 class _CrawlerEOD(CrawlerJob):
 
     @property
@@ -153,9 +165,9 @@ class AShareIndustry(CrawlerJob):
 
     def get_zz_industry(self):
         with get_session() as session:
-            industry_codes = session.query(self.enum_tb.code).filter(
+            industry_codes = session.query(self.enum_tb.industry_code).filter(
                 self.enum_tb.level_num == 3,
-                sa.func.substr(self.enum_tb.code, 1, 2) == const.SectorEnum.SEC_ZZ.value
+                sa.func.substr(self.enum_tb.industry_code, 1, 2) == const.SectorEnum.SEC_ZZ.value
             ).all()
 
         for (code,) in industry_codes:
@@ -168,11 +180,11 @@ class AShareIndustry(CrawlerJob):
         # TODO: not exist in prod, still have problem in dev server.
         with get_session() as session:
             industry_codes = session.query(
-                self.enum_tb.code,
+                self.enum_tb.industry_code,
                 self.enum_tb.memo,
             ).filter(
                 self.enum_tb.level_num == 4,
-                sa.func.substr(self.enum_tb.code, 1, 2) == const.SectorEnum.SEC_SW.value
+                sa.func.substr(self.enum_tb.industry_code, 1, 2) == const.SectorEnum.SEC_SW.value
             ).all()
 
         for code, idx in industry_codes:

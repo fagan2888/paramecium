@@ -61,6 +61,7 @@ class BaseJob(nd_job.JobBase):
 
     def insert_data(self, records, model, ukeys=None, msg=''):
         if isinstance(records, pd.DataFrame):
+            records = records.filter(model.__dict__.keys(), axis=1).drop_duplicates(ignore_index=True)
             records = (record.dropna().to_dict() for _, record in records.iterrows())
 
         if ukeys:

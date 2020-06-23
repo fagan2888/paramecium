@@ -8,15 +8,17 @@ import logging
 import pandas as pd
 from bs4 import BeautifulSoup
 
+from ._base import *
 from ..pg_models import others
 from ...utils.date_tool import expand_calendar
-from ._base import *
 
 logger = logging.getLogger(__name__)
 
 
 class CalendarCrawler(CrawlerJob):
-    """ Crawler trade calendar from tushare """
+    """
+    Crawler trade calendar from tushare
+    """
     meta_args = (
         # pre_truncate:
         {'type': 'int', 'description': '0 or 1 as bool, default `1`'},
@@ -38,6 +40,21 @@ class CalendarCrawler(CrawlerJob):
         cal_df.index.name = 'trade_dt'
 
         self.insert_data(records=cal_df.reset_index(), model=model, ukeys=model.get_primary_key())
+
+
+class IndustryCode(CrawlerJob):
+    """
+    记录板块列表，包括证监会行业分类、上交所行业分类、地域板块、概念板块、同系公司5套体系近千个板块
+    """
+    TS_ENV = 'dev'
+
+    def run(self, *args, **kwargs):
+        for level in range(1, 7):
+            codes = self.get_tushare_data(
+                api_name='index_code_all',
+                levelnum=level
+            )
+            self.insert_data(codes, others.EnumIndustryCode, others.EnumIndustryCode.get_primary_key())
 
 
 class RateBaselineCrawler(CrawlerJob):

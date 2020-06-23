@@ -1,6 +1,20 @@
 {
+  "+++++++++++++++++++++ UTILS +++++++++++++++++++++": "",
+  "index_code_all": {
+    "cn_name": "行业代码",
+    "url": 10246,
+    "mapping": {
+      "industriescode": "industry_code",
+      "industriesname": "industry_name",
+      "levelnum": "level_num",
+      "used": "used",
+      "industriesalias": "memo"
+    }
+  },
   "+++++++++++++++++++++ STOCK +++++++++++++++++++++": "",
   "stock_basic": {
+    "cn_name": "",
+    "url": "",
     "mapping": {
       "name": "short_name",
       "list_date": "list_dt",
@@ -10,6 +24,21 @@
     "dt_col": [
       "list_date",
       "delist_date"
+    ]
+  },
+  "previous_name": {
+    "cn_name": "中国A股证券曾用名",
+    "url": "http://124.232.155.79:7173/document/2?doc_id=10248",
+    "mapping": {
+      "begindate": "entry_dt",
+      "enddate": "remove_dt",
+      "ann_dt": "ann_date",
+      "s_info_name": "sector_code",
+      "changereason": "change_reason"
+    },
+    "dt_col": [
+      "entry_dt",
+      "remove_dt"
     ]
   },
   "daily": {
@@ -62,6 +91,51 @@
     ]
   },
   "+++++++++++++++++++++ FUND +++++++++++++++++++++": "",
+  "fund_description": {
+    "cn_name": "中国共同基金基本资料",
+    "url": 10257,
+    "mapping": {
+      "f_info_fullname": "full_name",
+      "f_info_name": "short_name",
+      "f_info_corp_fundmanagementcomp": "management",
+      "f_info_corp_fundmanagementid": "management_id",
+      "f_info_custodianbank": "custodian",
+      "f_info_custodianbankid": "custodian_id",
+      "f_info_firstinvesttype": "invest_type",
+      "f_info_setupdate": "setup_date",
+      "f_info_maturitydate": "maturity_date",
+      "f_info_managementfeeratio": "fee_ratio_manage",
+      "f_info_custodianfeeratio": "fee_ratio_custodian",
+      "crny_code": "currency",
+      "f_pchredm_pchstartdate": "purchase_start_dt",
+      "f_info_redmstartdate": "redemption_start_dt",
+      "f_info_minbuyamount": "min_purchase_amt",
+      "f_info_benchmark": "benchmark",
+      "f_info_status": "status",
+      "f_info_exchmarket": "exchange",
+      "f_info_firstinveststyle": "invest_style",
+      "f_info_issuedate": "issue_date",
+      "f_info_type": "fund_type",
+      "f_info_isinitial": "is_initial",
+      "f_info_investscope": "invest_scope",
+      "f_info_investobject": "invest_object",
+      "is_indexfund": "is_index",
+      "f_info_delistdate": "delist_date",
+      "f_info_listdate": "list_date",
+      "investstrategy": "invest_strategy",
+      "f_info_anndate": "ann_date"
+    },
+    "dt_col": [
+      "setup_date",
+      "maturity_date",
+      "issue_date",
+      "list_date",
+      "delist_date",
+      "ann_date",
+      "purchase_start_dt",
+      "redemption_start_dt"
+    ]
+  },
   "fund_basic": {
     "mapping": {
       "name": "short_name",
@@ -85,6 +159,34 @@
       "redemption_start_dt"
     ]
   },
+  "fund_benchmark": {
+    "cn_name": "中国共同基金业绩比较基准行情",
+    "url": 10254,
+    "mapping": {
+      "s_dq_close": "close_"
+    },
+    "dt_col": [
+      "trade_dt"
+    ]
+  },
+  "fund_nav_1": {
+    "cn_name": "中国共同基金净值",
+    "url": 10261,
+    "mapping": {
+      "price_date": "trade_dt",
+      "f_nav_unit": "unit_nav",
+      "f_nav_accumulated": "acc_nav",
+      "f_nav_adjfactor": "adj_factor",
+      "f_prt_netasset": "net_asset",
+      "f_asset_mergedsharesornot": "is_merge",
+      "netasset_total": "total_asset",
+      "is_exdividenddate": "is_ex_dividend"
+    },
+    "dt_col": [
+      "trade_dt",
+      "ann_date"
+    ]
+  },
   "fund_nav": {
     "mapping": {
       "end_date": "trade_dt",
@@ -105,6 +207,39 @@
       "ann_date",
       "start_dt",
       "end_dt"
+    ]
+  },
+  "fund_manager_1": {
+    "cn_name": "中国共同基金基金经理",
+    "url": 10259,
+    "mapping": {
+      "f_info_fundmanager": "manager_name",
+      "f_info_manager_gender": "gender",
+      "f_info_manager_birthyear": "birth_year",
+      "f_info_manager_education": "education",
+      "f_info_manager_nationality": "nationality",
+      "f_info_manager_startdate": "entry_dt",
+      "f_info_manager_leavedate": "remove_dt",
+      "f_info_manager_resume": "resume",
+      "f_info_fundmanager_id": "manager_id"
+    },
+    "dt_col": [
+      "entry_dt",
+      "remove_dt",
+      "ann_date"
+    ]
+  },
+  "fund_sector": {
+    "cn_name": "中国WIND基金分类",
+    "url": 10262,
+    "mapping": {
+      "s_info_sector": "sector_code",
+      "s_info_sectorentrydt": "entry_dt",
+      "s_info_sectorexitdt": "remove_dt"
+    },
+    "dt_col": [
+      "entry_dt",
+      "remove_dt"
     ]
   },
   "+++++++++++++++++++++ INDEX +++++++++++++++++++++": "",
@@ -136,5 +271,38 @@
     "dt_col": [
       "trade_dt"
     ]
+  },
+  "index_description": {
+    "cn_name": "中国共同基金指数基本资料",
+    "url": 10264,
+    "mapping": {
+      "s_info_name": "short_name",
+      "s_info_compname": "full_name",
+      "s_info_exchmarket": "market",
+      "s_info_publisher": "publisher",
+      "s_info_index_baseper": "base_date",
+      "s_info_index_basept": "base_point",
+      "s_info_listdate": "list_date",
+      "s_info_index_weightsrule": "weights_rule",
+      "s_info_indexstyle": "index_style"
+    }
+  },
+  "index_eod": {
+    "cn_name": "中国共同基金指数行情",
+    "url": 10265,
+    "mapping": {
+      "crncy_code": "currency",
+      "open": "open_",
+      "high": "high_",
+      "low": "low_",
+      "close": "close_",
+      "volume": "volume_",
+      "amount": "amount_"
+    }
+  },
+  "+++++": {
+    "cn_name": "",
+    "url": 10261,
+    "mapping": {}
   }
 }

@@ -8,10 +8,9 @@ import logging
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-
+from importlib import import_module
 import numpy as np
 import pandas as pd
-import typing
 
 from ..configuration import get_data_config
 
@@ -25,8 +24,8 @@ def _tushare_api(api_name='tushare_prod'):
     :param api_name: string
     """
     config = get_data_config(api_name)
-    ts = __import__(config.pop('module_name'))
-    ts_api = ts.pro_api(**config)
+    ts = import_module(config.pop('module_name') + ".client")
+    ts_api = ts.DataApi(**config, timeout=500)
     _log.info(f"Using TuShare API `{ts.__name__}`.")
     return ts_api
 
@@ -35,7 +34,7 @@ def get_tushare_data(api_name, fields=None, env='prod', **func_kwargs):
     """
     获取Tushare数据，并做一些基本处理，例如rename column, recognize timestamp
     """
-    _log.debug(f"[{env}]{api_name}: {func_kwargs}")
+    _log.debug(f"[{env}]{api_name}: {fields!r}{func_kwargs}")
     api = _tushare_api(f'tushare_{env}')
 
     # mapping between tushare and postgresql database
@@ -58,7 +57,7 @@ def get_tushare_data(api_name, fields=None, env='prod', **func_kwargs):
     result = result.rename(columns=col_mapping)
 
     # transform dt cols
-    for c in conf.get('dt_col', []):
+    for c in ({*conf.get('dt_col', [])} & {*result.columns}):
         result.loc[:, c] = pd.to_datetime(result[c], format='%Y%m%d')
 
     return result
