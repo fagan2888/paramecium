@@ -289,7 +289,9 @@ class FundPortfolioAsset(CrawlerJob):
                 ).join(
                     g, fund.Description.wind_code == g.c.wind_code, isouter=True  # left join
                 ).order_by(fund.Description.is_initial.desc())
-            ).fillna(pd.NaT)
+            )
+        for c in ('setup_date', 'maturity_date', 'max_dt'):
+            fund_list.loc[:, c] = pd.to_datetime(fund_list[c])
         fund_list = fund_list.fillna({'max_dt': fund_list['setup_date']})
         fund_list = fund_list.loc[
             lambda df: df['max_dt'] + QuarterEnd(n=0) < df['maturity_date'].clip(upper=get_last_td()) - QuarterEnd(n=1)]
