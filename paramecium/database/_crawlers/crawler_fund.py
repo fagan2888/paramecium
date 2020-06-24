@@ -249,7 +249,7 @@ class FundPortfolioAsset(CrawlerJob):
     TS_ENV = 'dev'
 
     def run(self, *args, **kwargs):
-        fund_list = self.get_max_dt()
+        fund_list = self.get_max_dt().loc[lambda df: df['max_dt'] < '2018-12-31']
         for _, row in fund_list.iterrows():
             ts_data = self.get_tushare_data('asset_portfolio', ts_code=row['wind_code'])
             ts_data = ts_data.loc[lambda df: df['end_date'] >= row['max_dt'] - QuarterEnd(n=1)]
@@ -257,7 +257,7 @@ class FundPortfolioAsset(CrawlerJob):
             self.insert_data(ts_data.loc[lambda df: df['bond_value'].gt(0)], fund.PortfolioAssetBond)
 
         # 临时的修补坑数据
-        fund_list = self.get_max_dt().loc[lambda df: df['is_initial'].eq(1)&(df['max_dt'] < '2018-12-31')]
+        fund_list = self.get_max_dt().loc[lambda df: df['is_initial'].eq(1)]
         mapping = get_wind_conf('crawler_mf_prf')
         for _, row in fund_list.iterrows():
             w_data = self.query_wind(
