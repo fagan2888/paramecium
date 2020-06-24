@@ -3,8 +3,9 @@
 @Time: 2020/6/23 9:39
 @Author: Sue Zhu
 """
-import sqlalchemy as sa
 import pandas as pd
+import sqlalchemy as sa
+from pandas.tseries.offsets import QuarterEnd
 
 from ._base import *
 from .. import get_dates, get_last_td
@@ -111,7 +112,7 @@ class FundSector(CrawlerJob):
                 '2001010202000000', '2001010203000000', '1000011486000000',  # '2001010204000000',
                 '2001010301000000', '2001010302000000', '2001010303000000', '2001010304000000',
                 '1000010419000000', '1000011421000000',  # '2001010305000000', '2001010306000000',
-                '2001010400000000'
+                '2001010400000000',
             )
         )
         # '1000x'特殊分类
@@ -120,3 +121,40 @@ class FundSector(CrawlerJob):
             # 定期开放,委外,机构,可转债
             ("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000")
         )
+
+
+class FundPortfolioAsset(CrawlerJob):
+    """
+    基金资产配置数据
+    [2020/6/18] Only 规模数据
+    w.wss("000001.OF,166005.OF,004232.OF", "prt_totalasset,prt_fundnetasset_total","unit=1;rptDate=20191231")
+    """
+
+    def run(self, *args, **kwargs):
+        mapping = get_wind_conf('crawler_mf_prf')
+        with get_session() as ss:
+            max_dt, = ss.query(sa.func.max(fund.PortfolioAsset.end_date)).one()
+            if max_dt is not None:
+                max_dt = min((pd.to_datetime(max_dt), pd.Timestamp.now() - QuarterEnd(n=1)))
+            else:
+                max_dt = pd.Timestamp('2009-12-30')
+
+            for quarter_end in pd.date_range(max_dt, pd.Timestamp.now(), freq='Q'):
+                fund_list = [f for f, *_ in ss.query(
+                    fund.Description.wind_code
+                ).filter(
+                    fund.Description.setup_date < quarter_end,
+                    fund.Description.maturity_date >= quarter_end,
+                    fund.Description.is_initial == 1,
+                ).all()]
+                for i, funds in enumerate(utils.chunk(fund_list, 1499), start=1):
+                    data = self.query_wind(
+                        api_name='wss', codes=funds, fields=mapping['fields'].keys(),
+                        col_mapping=mapping['fields']
+                    )
+                    self.insert_data(
+                        data.assign(end_date=quarter_end, wind_code=data.index),
+                        fund.PortfolioAsset,
+                        msg=f'{quarter_end} - {min(i * 1499 / 8000, 1) * 100:.2f}%'
+                    )
+        self.clean_duplicates(fund.PortfolioAsset, [fund.PortfolioAsset.wind_code, fund.PortfolioAsset.end_date])

@@ -15,7 +15,7 @@ from scipy.optimize import minimize
 from .. import const
 from ..const import AssetEnum
 from ..database import get_dates, get_price, get_index_ff3, get_index_bond5, FactorDBTool
-from ..database.fund_ import FundUniverse, get_convert_fund
+from ..database.fund_ import FundUniverse
 from ..exc import DataExistError
 from ..interface import AbstractFactor
 from ..utils import price_stats as p_stats, transformer as tf
@@ -23,7 +23,7 @@ from ..utils import price_stats as p_stats, transformer as tf
 
 class _RetFactor(AbstractFactor):
     """
-    收益率相关因子抽象类
+    收益率相关因子抽象类，统一基金初筛逻辑及收益计算方式
     """
     asset_type = const.AssetEnum.CMF
     std_limit = 1e-8  # 去除净值为一条线的情况
@@ -32,33 +32,52 @@ class _RetFactor(AbstractFactor):
     def __init__(self, bk_win, freq='W'):
         self.freq = const.FreqEnum[freq]
         self.bk_win = bk_win
-        self.universe = FundUniverse(
-            exclude_=None,
-            issue=int(250 / self.freq.value * self.bk_win) + 63,  # 考虑到至少三个月建仓期
-            size_=0  # 初始条件较为宽松，防止因子覆盖率过低
-        )
+        self.universe = FundUniverse(**self._universe_param)
 
     def __str__(self):
         return f'{super().__str__()}(bk_win={self.bk_win}, freq={self.freq.name})'
 
     @property
     def name(self):
-        return self.freq.name.lower() + (f'{self.bk_win:03d}' if self.bk_win else "_itd")
+        return f'{self.freq.name.lower()}{self.bk_win:03d}'
 
-    def _get_price_pvt(self, dt, bk_win, freq=const.FreqEnum.W):
-        dates = [t for t in get_dates(freq) if t <= dt]
+    @property
+    def _universe_param(self):
+        return dict(
+            exclude_=None,
+            issue=int(250 / self.freq.value * self.bk_win) + 63,  # 考虑到至少三个月建仓期
+            size_=0  # 初始条件较为宽松，防止因子覆盖率过低
+        )
+
+    def _get_ret_pvt(self, dt):
+        dates = [t for t in get_dates(self.freq) if t <= dt]
         funds = self.universe.get_instruments(dt)
 
-        price = get_price(self.asset_type, start=dates[-bk_win - 1], end=dt)
+        price = get_price(self.asset_type, start=dates[-self.bk_win - 1], end=dt)
         price['adj_nav'] = price['unit_nav'] * price['adj_factor']
         price_pvt = price.pivot('trade_dt', 'wind_code', 'adj_nav').filter(dates, axis=0).filter(funds, axis=1)
         ret = price_pvt.pct_change(1, limit=1).iloc[1:].where(lambda df: df.ne(0))
-        ret = ret.dropna(thresh=round(bk_win * 0.8), axis=1)
-        ret = ret.loc[:, ret.std().gt(self.std_limit) & ret.abs().max().le(1.1 ** (250 / freq.value) - 1)]
+        ret = ret.dropna(thresh=round(self.bk_win * 0.8), axis=1)
+        ret = ret.loc[:, ret.std().gt(self.std_limit) & ret.abs().max().le(1.1 ** (250 / self.freq.value) - 1)]
         return ret
 
 
 class FundPerform(_RetFactor):
+    """
+    基金收益统计指标
+
+        - ann_ret: 年化收益
+        - ann_vol: 年化波动
+        - skewness: 偏度
+        - kurtosis: 峰度
+        - max_dd: 最大回撤
+        - down_side_risk: 下行风险
+        - var: 在险价值
+        - c_var: 条件在险价值
+        - sharpe: 夏普比率
+        - sortino: 索提诺比率
+        - calmar: 卡玛比率
+    """
 
     def __init__(self, bk_win, freq='W'):
         super().__init__(bk_win=bk_win, freq=freq)
@@ -87,7 +106,7 @@ class FundPerform(_RetFactor):
         return {k: float for k in self.funcs.keys()}
 
     def compute(self, dt):
-        fund_ret = self._get_price_pvt(dt, self.bk_win, self.freq)
+        fund_ret = self._get_ret_pvt(dt)
         factor = pd.DataFrame(
             {name: func(fund_ret) for name, func in self.funcs.items()},
             index=fund_ret.columns
@@ -97,10 +116,22 @@ class FundPerform(_RetFactor):
 
 
 class _Reg(_RetFactor):
+    """"
+    回归因子
+    """
 
-    def __init__(self, bk_win, freq='W'):
-        super().__init__(bk_win=bk_win, freq=freq)
+    def __init__(self, bk_win, freq='W', half_life=0):
         self.index_ret = self.get_index_ret()
+        self.half_life = half_life
+        super().__init__(bk_win=bk_win, freq=freq)
+
+    def __str__(self):
+        half = f', half={self.half_life}' if self.half_life else ''
+        return f'{super().__str__()[:-1]}{half})'
+
+    @property
+    def name(self):
+        return f'{super().name}' + (f'_half{self.half_life}' if self.half_life else '')
 
     def get_index_ret(self):
         return pd.DataFrame()
@@ -111,7 +142,7 @@ class _Reg(_RetFactor):
         return {k: float for k in (*cols, *(f'{c}_tstats' for c in cols), 'r2')}
 
     def compute(self, dt):
-        fund_ret = self._get_price_pvt(dt, self.bk_win, self.freq)
+        fund_ret = self._get_ret_pvt(dt)
         fund_ret, idx = fund_ret.fillna(0).align(self.index_ret, axis=0, join='inner')
         if idx.shape[0] < self.bk_win * 0.9:
             return pd.DataFrame(columns=self.field_types.keys())
@@ -127,9 +158,9 @@ class _Reg(_RetFactor):
 
 class FundRegFF3(_Reg):
 
-    def __init__(self, bk_win, freq='W', timing=None):
+    def __init__(self, bk_win, freq='W', half_life=None, timing=None):
         self.timing = timing
-        super().__init__(bk_win, freq)
+        super().__init__(bk_win, freq, half_life)
 
     def __str__(self):
         return f'{super().__str__()[:-1]}, timing={self.timing})'
@@ -218,3 +249,35 @@ class AllocationPureBond(AbstractFactor):
         ).round(6)
         new_factor = raw_factor.mul(weight).sum(axis=1)
         return new_factor.to_frame('mix_factor')
+
+
+class MoneyFundNonTradeRet(_RetFactor):
+    date_mapper = None
+
+    def __init__(self, bk_win):
+        super().__init__(bk_win, freq='D')
+
+    @property
+    def name(self):
+        return f'cmoney_notrd_{super().name}'
+
+    @property
+    def field_types(self):
+        return {'avg_ret': float}
+
+    @property
+    def _universe_param(self):
+        return {'include_': ('2001010400000000',), **super()._universe_param}
+
+    def compute(self, dt):
+        idx = get_dates(self.freq).to_series()
+        non_trd_dt = (idx - idx.slice_shift(1)).dt.days.loc[lambda ser: ser.gt(1)]
+        non_trd_ret = self._get_ret_pvt(dt)
+        non_trd_ret, non_trd_dt = non_trd_ret.align(non_trd_dt, axis=0, join='inner')
+
+        def _apply(ret):
+            ret, dt_ser = ret.dropna().align(non_trd_dt, axis=0, join='inner')
+            return ret.sub(ret.div(dt_ser)).sum() / dt_ser.sub(1).sum()
+
+        result = non_trd_ret.apply(_apply) * 1e4
+        return result.to_frame('avg_ret')

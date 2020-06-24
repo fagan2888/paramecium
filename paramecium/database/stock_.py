@@ -2,6 +2,8 @@
 """
 @Time: 2020/6/7 14:41
 @Author: Sue Zhu
+
+TESTTESTTEST
 """
 from functools import lru_cache
 
@@ -46,7 +48,7 @@ class StockUniverse(AbstractUniverse):
                     stock.ASharePreviousName.remove_dt >= trade_dt
                 ).all()
             )
-            stock_dt = query_st.loc[query_st['new_name'].str.contains(r'ST|PT'), 'wind_code']
+            stock_dt = query_st.loc[query_st['new_name'].str.contains(r'ST|PT|退市'), 'wind_code']
 
         return {*flat_1dim(query_desc)} - {*flat_1dim(query_trade)} - {*stock_dt}
 

@@ -33,7 +33,7 @@
       "begindate": "entry_dt",
       "enddate": "remove_dt",
       "ann_dt": "ann_date",
-      "s_info_name": "sector_code",
+      "s_info_name": "use_name",
       "changereason": "change_reason"
     },
     "dt_col": [
@@ -241,6 +241,42 @@
       "entry_dt",
       "remove_dt"
     ]
+  },
+  "asset_portfolio": {
+    "cn_name": "中国共同基金投资组合——资产配置",
+    "url": 10253,
+    "dev": true,
+    "mapping": {
+      "f_prt_enddate": "end_date",
+      "f_prt_totalasset": "total_asset",
+      "f_prt_netasset": "net_asset",
+      "f_prt_stockvalue": "stock_value",
+      "f_prt_pasvstkvalue": "stock_passive",
+      "f_prt_posvstkvalue": "stock_positive",
+      "f_prt_cash": "cash",
+      "f_prt_bondvalue": "bond_value",
+      "f_prt_warrantvalue": "warrant_value",
+      "f_prt_fundvalue": "fund_value",
+      "f_prt_mmvalue": "mm_value",
+      "f_prt_other": "other",
+      "f_prt_absvalue": "abs_value",
+      "f_prt_debcrebalance": "dr_cr_rebalance",
+      "f_mmf_avgptm": "mmf_avgptm",
+      "f_mmf_reverserepo": "mmf_reverserepo",
+      "f_mmf_repo": "mmf_repo",
+      "f_prt_hkstockvalue": "stock_hk",
+      "f_prt_govbond": "government",
+      "f_prt_bdvalue_nogov": "no_gov",
+      "f_prt_finanbond": "financial",
+      "f_prt_covertbond": "convert",
+      "f_prt_corpbond": "corp",
+      "f_prt_ctrbankbill": "center_bank",
+      "f_prt_polifinanbdvalue": "politic_financial",
+      "f_prt_cpvalue": "short_term_cp",
+      "f_prt_mtnvalue": "mid_term_cp",
+      "f_prt_cds": "cds"
+    },
+    "dt_col": ["end_date"]
   },
   "+++++++++++++++++++++ INDEX +++++++++++++++++++++": "",
   "index_basic": {

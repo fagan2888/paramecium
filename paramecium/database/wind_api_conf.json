@@ -55,6 +55,7 @@
     "fields": {
       "PRT_TOTALASSET": "total_asset",
       "PRT_FUNDNETASSET_TOTAL": "net_asset"
-    }
+    },
+    "options": "unit=1;Period=Q;Days=Alldays"
   }
 }

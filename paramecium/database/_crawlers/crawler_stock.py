@@ -31,14 +31,21 @@ class AShareDescription(CrawlerJob):
 
 
 class ASharePreviousName(CrawlerJob):
-    TS_ENV = 'tushare_dev'
+    """
+
+    """
+    TS_ENV = 'dev'
 
     def run(self, *args, **kwargs):
         with get_session() as ss:
             codes = [code for code, *_ in ss.query(stock.AShareDescription.wind_code).all()]
 
         for code in codes:
+            if code.startswith('A'):
+                continue
             ts_data = self.get_tushare_data('previous_name', ts_code=code)
+            ts_data['change_reason'] = ts_data['change_reason'].dropna().map(lambda x: f'{x:.0f}')
+            ts_data = ts_data.fillna({'remove_dt': pd.Timestamp.max})
             self.insert_data(ts_data, stock.ASharePreviousName, stock.ASharePreviousName.uk_.columns)
 
 

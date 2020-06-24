@@ -33,19 +33,15 @@ class AShareDescription(AbstractDesc):
     comp_name_en = sa.Column(sa.String(100))  # 公司英文名称
 
 
-class AShareEODPrice(BaseORM):
+class AShareEODPrice(AbstractPrice):
     """
     中国A股日行情
     """
     __tablename__ = 'stock_org_price'
 
-    oid = gen_oid()
-    wind_code = sa.Column(sa.String(10), index=True)  # ts代码 ts_code
-    trade_dt = sa.Column(sa.Date, index=True)  # 交易日期 trade_date
     open_ = sa.Column(sa.Float)  # 开盘价(元) open
     high_ = sa.Column(sa.Float)  # 最高价(元) high
     low_ = sa.Column(sa.Float)  # 最低价(元) low
-    close_ = sa.Column(sa.Float)  # 收盘价(元) close
     volume_ = sa.Column(sa.Integer)  # 成交量(手) volume
     amount_ = sa.Column(sa.Float)  # 成交金额(千元) amount
     adj_factor = sa.Column(sa.Float)  # 复权因子
@@ -66,7 +62,7 @@ class AShareSuspend(BaseORM):
     suspend_time = sa.Column(sa.String(100))  # 停复牌时间
     reason_type = sa.Column(sa.String(40))  # 停牌原因代码 change_reason_type
 
-    uk = sa.UniqueConstraint(suspend_date, suspend_type, wind_code, name=f'uk_{__tablename__}_dt_tp_code')
+    uk = sa.UniqueConstraint('suspend_date', 'suspend_type', 'wind_code', name=f'uk_{__tablename__}_dt_tp_code')
 
 
 class AShareEODDerivativeIndicator(BaseORM):
@@ -115,24 +111,30 @@ class AShareEODDerivativeIndicator(BaseORM):
     net_increase_cash_equ_lyr = sa.Column(sa.Float)  # 现金及现金等价物净增加额(LYR) net_incr_cash_cash_equ_lyr
 
 
-class AShareSector(AbstractSector):
-    """
-    A股板块信息
-    - 中证行业成分(2016): http://tushare.xcsc.com:7173/document/2?doc_id=10212
-    - 申万: http://124.232.155.79:7173/document/2?doc_id=10181
-    """
-    __tablename__ = 'stock_org_sector'
+# class AShareSector(AbstractSector):
+#     """
+#     A股板块信息
+#     - 中证行业成分(2016): http://tushare.xcsc.com:7173/document/2?doc_id=10212
+#     - 申万: http://124.232.155.79:7173/document/2?doc_id=10181
+#     """
+#     __tablename__ = 'stock_org_sector'
+#
+#     uk_ = sa.UniqueConstraint('wind_code', 'sector_code', 'entry_dt', name=f"uk_{__tablename__}")
 
-    uk_ = sa.UniqueConstraint('wind_code', 'sector_code', 'entry_dt', name=f"uk_{__tablename__}")
 
-
-class ASharePreviousName(AbstractSector):
+class ASharePreviousName(BaseORM):
     """
     A股曾用名
     """
     __tablename__ = 'stock_org_previous_name'
 
-    ann_date = sa.Column(name='pub_date', type_=sa.Date)  # 公告日期 remove_dt
+    oid = gen_oid()
+    wind_code = sa.Column(type_=sa.String(40), index=True, comment='证券代码')
+    use_name = sa.Column(type_=sa.String(40))
+    entry_dt = sa.Column(type_=sa.Date, comment='开始日期')
+    remove_dt = sa.Column(type_=sa.Date, comment='结束日期')
+
+    ann_date = sa.Column(type_=sa.Date)  # 公告日期 remove_dt
     change_reason = sa.Column(sa.String(10), index=True)
 
-    uk_ = sa.UniqueConstraint('wind_code', 'sector_code', 'entry_dt', name=f"uk_{__tablename__}")
+    uk_ = sa.UniqueConstraint('wind_code', 'use_name', 'entry_dt', name=f"uk_{__tablename__}")

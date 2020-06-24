@@ -92,8 +92,8 @@ class AbstractFactorAnalyzer(metaclass=abc.ABCMeta):
             print(f'Run test at {t:%Y-%m-%d}......{i / (len(dates) - shift) * 100:.2f}%')
 
             # 数据准备
-            factor_val = self.get_factor(t)
-            if factor_val.shape[0] < self.group_quantile * 1.5:
+            factor_val = self.get_factor(t).dropna(how='all', axis=1).loc[:, lambda df: df.std().gt(0)]
+            if factor_val.shape[0] < self.group_quantile * 1.5 or factor_val.shape[1] < 1:
                 continue
 
             # 描述性统计

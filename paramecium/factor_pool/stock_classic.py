@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from ..const import AssetEnum
-from ..database import stock
+from ..database import stock_
 from ..interface import AbstractFactor
 from ..utils.transformer import OutlierMAD, ScaleMinMax
 
@@ -22,7 +22,7 @@ class FamaFrench(AbstractFactor):
     start_date = pd.Timestamp('2003-12-31')
 
     def __init__(self):
-        self.universe = stock.StockUniverse()
+        self.universe = stock_.StockUniverse()
         self.value_scale = ScaleMinMax(
             min_func=partial(np.nanpercentile, q=30, axis=0),
             max_func=partial(np.nanpercentile, q=70, axis=0)
@@ -37,7 +37,7 @@ class FamaFrench(AbstractFactor):
         universe = self.universe.get_instruments(dt)
 
         # get derivative data
-        derivative = stock.get_derivative_indicator(
+        derivative = stock_.get_derivative_indicator(
             trade_dt=f'{dt:%Y%m%d}',
             fields=['mv', 'pe_ttm'],
         ).rename(columns={'mv': 'capt'}).filter(universe, axis=0).fillna({'pe_ttm': 0})

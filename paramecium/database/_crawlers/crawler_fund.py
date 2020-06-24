@@ -14,7 +14,6 @@ from ._base import *
 from ..comment import get_last_td
 from ..pg_models import fund, others
 from ... import utils
-from ...utils import chunk
 
 
 class FundDescription(CrawlerJob):
@@ -93,9 +92,8 @@ class FundDescription(CrawlerJob):
 
         self.get_logger().debug('getting description from tushare')
         ts_desc = pd.concat(
-            (self.get_tushare_data(api_name='fund_basic', market=m) for m in list('OE')),
-            axis=0, sort=False
-        ).set_index('wind_code').filter(fund.Description.__dict__.keys(), axis=1)
+            (self.get_tushare_data(api_name='fund_basic', market=m) for m in 'OE'), axis=0
+        ).set_index('wind_code')
 
         self.get_logger().debug('getting description from wind')
         w_desc = pd.concat((
@@ -236,7 +234,7 @@ class FundSector(CrawlerJob):
             ).group_by(model.sector_code).all()}
 
         for (code,) in sector_codes:
-            t = max_dt.get(code, pd.Timestamp.min)
+            t = max_dt.get(pd.Timestamp(code), pd.Timestamp.min)
             ts_data = self.get_tushare_data(api_name='fund_sector', sector=code).fillna({'remove_dt': pd.Timestamp.max})
             if ts_data.shape[0] > 9999:
                 self.get_logger().error('sector data may not localized entirely.')
@@ -247,35 +245,52 @@ class FundSector(CrawlerJob):
 class FundPortfolioAsset(CrawlerJob):
     """
     基金资产配置数据
-    [2020/6/18] Only 规模数据
-    w.wss("000001.OF,166005.OF,004232.OF", "prt_totalasset,prt_fundnetasset_total","unit=1;rptDate=20191231")
     """
+    TS_ENV = 'dev'
 
     def run(self, *args, **kwargs):
-        mapping = get_wind_conf('crawler_mf_prf')
-        with get_session() as ss:
-            max_dt, = ss.query(sa.func.max(fund.PortfolioAsset.end_date)).one()
-            if max_dt is not None:
-                max_dt = min((pd.to_datetime(max_dt), pd.Timestamp.now() - QuarterEnd(n=1)))
-            else:
-                max_dt = pd.Timestamp('2009-12-30')
+        fund_list = self.get_max_dt()
+        for _, row in fund_list.iterrows():
+            ts_data = self.get_tushare_data('asset_portfolio', ts_code=row['wind_code'])
+            ts_data = ts_data.loc[lambda df: df['end_date'] >= row['max_dt'] - QuarterEnd(n=1)]
+            self.insert_data(ts_data, fund.PortfolioAsset)
+            self.insert_data(ts_data.loc[lambda df: df['bond_value'].gt(0)], fund.PortfolioAssetBond)
 
-            for quarter_end in pd.date_range(max_dt, pd.Timestamp.now(), freq='Q'):
-                fund_list = [f for f, *_ in ss.query(
-                    fund.Description.wind_code
-                ).filter(
-                    fund.Description.setup_date < quarter_end,
-                    fund.Description.maturity_date >= quarter_end,
-                    fund.Description.is_initial == 1,
-                ).all()]
-                for i, funds in enumerate(chunk(fund_list, 1499), start=1):
-                    data = self.query_wind(
-                        api_name='wss', codes=funds, fields=mapping['fields'].keys(),
-                        col_mapping=mapping['fields']
-                    )
-                    self.insert_data(
-                        data.assign(end_date=quarter_end, wind_code=data.index),
-                        fund.PortfolioAsset,
-                        msg=f'{quarter_end} - {min(i * 1499 / 8000, 1) * 100:.2f}%'
-                    )
+        # 临时的修补坑数据
+        fund_list = self.get_max_dt().loc[lambda df: df['is_initial'].eq(1)&(df['max_dt'] < '2018-12-31')]
+        mapping = get_wind_conf('crawler_mf_prf')
+        for _, row in fund_list.iterrows():
+            w_data = self.query_wind(
+                api_name='wsd', codes=row['wind_code'], fields=mapping['fields'].keys(), col_mapping=mapping['fields'],
+                beginTime=row['max_dt'] + QuarterEnd(n=1), endTime=pd.Timestamp.now() - QuarterEnd(n=1),
+                options=mapping['options']
+            ).assign(wind_code=row['wind_code'])
+            w_data['end_date'] = w_data.index
+            self.insert_data(w_data, fund.PortfolioAsset, msg=row['wind_code'])
+
         self.clean_duplicates(fund.PortfolioAsset, [fund.PortfolioAsset.wind_code, fund.PortfolioAsset.end_date])
+        self.clean_duplicates(
+            fund.PortfolioAssetBond, [fund.PortfolioAssetBond.wind_code, fund.PortfolioAssetBond.end_date])
+
+    @staticmethod
+    def get_max_dt():
+        with get_session() as ss:
+            g = ss.query(
+                fund.PortfolioAsset.wind_code,
+                sa.func.max(fund.PortfolioAsset.end_date).label('max_dt')
+            ).group_by(fund.PortfolioAsset.wind_code).subquery('g')
+            fund_list = pd.DataFrame(
+                ss.query(
+                    fund.Description.wind_code,
+                    fund.Description.setup_date,
+                    fund.Description.maturity_date,
+                    fund.Description.is_initial,
+                    g.c.max_dt,
+                ).join(
+                    g, fund.Description.wind_code == g.c.wind_code, isouter=True  # left join
+                ).order_by(fund.Description.is_initial.desc())
+            ).fillna(pd.NaT)
+        fund_list = fund_list.fillna({'max_dt': fund_list['setup_date']})
+        fund_list = fund_list.loc[
+            lambda df: df['max_dt'] + QuarterEnd(n=0) < df['maturity_date'].clip(upper=get_last_td()) - QuarterEnd(n=1)]
+        return fund_list

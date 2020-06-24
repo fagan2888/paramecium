@@ -42,6 +42,9 @@ class AbstractFactor(metaclass=abc.ABCMeta):
     def __str__(self):
         return self.__class__.__name__
 
+    def __format__(self, format_spec):
+        return self.__str__()
+
     @property
     def name(self):
         return camel2snake(self.__class__.__name__)

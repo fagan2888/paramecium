@@ -7,10 +7,12 @@ import json
 import logging
 from contextlib import contextmanager
 from functools import lru_cache
-from pathlib import Path
 from importlib import import_module
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+from requests import RequestException
 
 from ..configuration import get_data_config
 
@@ -30,7 +32,7 @@ def _tushare_api(api_name='tushare_prod'):
     return ts_api
 
 
-def get_tushare_data(api_name, fields=None, env='prod', **func_kwargs):
+def get_tushare_data(api_name, fields=None, env='prod', retry=3, **func_kwargs):
     """
     获取Tushare数据，并做一些基本处理，例如rename column, recognize timestamp
     """
@@ -53,14 +55,20 @@ def get_tushare_data(api_name, fields=None, env='prod', **func_kwargs):
         fields_str = ''
 
     # query ts api
-    result = api.query(api_name, **func_kwargs, fields=fields_str).fillna(np.nan)
-    result = result.rename(columns=col_mapping)
+    for i in range(retry):
+        try:
+            result = api.query(api_name, **func_kwargs, fields=fields_str)
+        except (ConnectionError, RequestException) as e:
+            if i < retry-1:
+                _log.debug('retry...')
+            else:
+                _log.error(f'fail at {func_kwargs}')
+        else:
+            result = result.rename(columns=col_mapping).fillna(np.nan)
+            for c in ({*conf.get('dt_col', [])} & {*result.columns}):
+                result.loc[:, c] = pd.to_datetime(result[c], format='%Y%m%d')
 
-    # transform dt cols
-    for c in ({*conf.get('dt_col', [])} & {*result.columns}):
-        result.loc[:, c] = pd.to_datetime(result[c], format='%Y%m%d')
-
-    return result
+            return result
 
 
 @contextmanager
