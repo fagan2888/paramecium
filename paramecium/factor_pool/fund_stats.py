@@ -3,22 +3,19 @@
 @Time: 2020/6/9 14:27
 @Author: Sue Zhu
 """
-__all__ = ['FundPerform', 'FundRegFF3', 'FundRegBond5', 'AllocationPureBond']
+__all__ = ['FundPerform', 'FundRegFF3', 'FundRegBond5']
 
 from functools import partial
 
 import numpy as np
 import pandas as pd
 import scipy.stats as sc_stats
-from scipy.optimize import minimize
 
 from .. import const
-from ..const import AssetEnum
-from ..database import get_dates, get_price, get_index_ff3, get_index_bond5, FactorDBTool
+from ..database import get_dates, get_price, get_index_ff3, get_index_bond5
 from ..database.fund_ import FundUniverse
-from ..exc import DataExistError
 from ..interface import AbstractFactor
-from ..utils import price_stats as p_stats, transformer as tf
+from ..utils import price_stats as p_stats
 
 
 class _RetFactor(AbstractFactor):
@@ -46,7 +43,8 @@ class _RetFactor(AbstractFactor):
         return dict(
             exclude_=None,
             issue=int(250 / self.freq.value * self.bk_win) + 63,  # 考虑到至少三个月建仓期
-            size_=0  # 初始条件较为宽松，防止因子覆盖率过低
+            size_=0,  # 初始条件较为宽松，防止因子覆盖率过低
+            manager=0
         )
 
     def _get_ret_pvt(self, dt):
@@ -121,9 +119,9 @@ class _Reg(_RetFactor):
     """
 
     def __init__(self, bk_win, freq='W', half_life=0):
+        super().__init__(bk_win=bk_win, freq=freq)
         self.index_ret = self.get_index_ret()
         self.half_life = half_life
-        super().__init__(bk_win=bk_win, freq=freq)
 
     def __str__(self):
         half = f', half={self.half_life}' if self.half_life else ''
@@ -183,74 +181,6 @@ class FundRegBond5(_Reg):
         return f'reg_bond5_{super().name}'
 
 
-class AllocationPureBond(AbstractFactor):
-    asset_type = AssetEnum.CMF
-    start_date = FundRegBond5.start_date
-
-    def __init__(self, idx_win, bk_win, freq='W'):
-        self._raw = FundRegBond5(bk_win, freq)
-        self.universe = FundUniverse(include_=('2001010301000000', '2001010303000000'), size_=1)
-        self._io = FactorDBTool(self._raw)
-        self.idx_win = idx_win
-
-    @property
-    def index_ret(self):
-        return self._raw.index_ret
-
-    @property
-    def field_types(self):
-        return {'mix_factor': float}
-
-    @property
-    def name(self):
-        return f'pure_bond_allocation{self._raw.name.split("_")[-1]}_{self.idx_win}'
-
-    def compute(self, dt):
-        try:
-            self._io.localized_snapshot(dt, if_exist=0)
-        except DataExistError:
-            pass
-
-        raw_factor = self._io.fetch_snapshot(dt).filter(self.universe.get_instruments(dt), axis=0)
-        for trans in (tf.OutlierMAD(), tf.ScaleNormalize()):
-            raw_factor.loc[:] = trans.fit_transform(raw_factor.values)
-
-        constrains = (
-            {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},
-            {'type': 'ineq', 'fun': lambda w: w},
-        )
-
-        cur_factor_ret = self.index_ret.loc[:dt, ['market', 'credit', 'default_']].tail(self.idx_win)
-        ret_mean = cur_factor_ret.add(1).prod().pow(250 / cur_factor_ret.shape[0]).sub(1)
-
-        sigma_ann = cur_factor_ret.cov() * 250
-        n_rp = sigma_ann.shape[0]
-
-        opt_mvo = minimize(
-            lambda w: -(w @ ret_mean) / np.sqrt(w @ sigma_ann @ w.T),
-            np.ones((1, n_rp)) / n_rp,
-            method='SLSQP',
-            constraints=constrains,
-        )
-        cur_factor_ret = pd.DataFrame(
-            dict(convert=self.index_ret['convert'], bond=cur_factor_ret @ opt_mvo.x)
-        ).dropna()
-
-        sigma_rp = cur_factor_ret.cov() * 250
-        opt_rp = minimize(
-            lambda w: np.std(w.T * (sigma_rp @ w.T) / np.sqrt(w @ sigma_rp @ w.T).squeeze()),
-            np.ones((1, 2)) / 2,
-            method='SLSQP',
-            constraints=constrains,
-        )
-        weight = pd.Series(
-            [*(opt_mvo.x * opt_rp.x[1]), 0, opt_rp.x[0]],
-            index=['market', 'credit', 'default_', 'cmoney', 'convert']
-        ).round(6)
-        new_factor = raw_factor.mul(weight).sum(axis=1)
-        return new_factor.to_frame('mix_factor')
-
-
 class MoneyFundNonTradeRet(_RetFactor):
     date_mapper = None
 
@@ -267,17 +197,15 @@ class MoneyFundNonTradeRet(_RetFactor):
 
     @property
     def _universe_param(self):
-        return {'include_': ('2001010400000000',), **super()._universe_param}
+        return {'include_': ('2001010400000000',), 'exclude_': ("1000033974000000",), **super()._universe_param}
 
     def compute(self, dt):
         idx = get_dates(self.freq).to_series()
         non_trd_dt = (idx - idx.slice_shift(1)).dt.days.loc[lambda ser: ser.gt(1)]
         non_trd_ret = self._get_ret_pvt(dt)
         non_trd_ret, non_trd_dt = non_trd_ret.align(non_trd_dt, axis=0, join='inner')
-
-        def _apply(ret):
-            ret, dt_ser = ret.dropna().align(non_trd_dt, axis=0, join='inner')
-            return ret.sub(ret.div(dt_ser)).sum() / dt_ser.sub(1).sum()
-
-        result = non_trd_ret.apply(_apply) * 1e4
+        result = pd.Series(
+            np.average(non_trd_ret.div(non_trd_dt, axis=0).fillna(0), axis=0, weights=non_trd_dt - 1) * 1e4,
+            index=non_trd_ret.columns
+        )
         return result.to_frame('avg_ret')

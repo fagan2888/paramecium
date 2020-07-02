@@ -34,7 +34,7 @@ class CrawlerJob(BaseJob):
             self.get_logger().error(f'Fail to get respond data with code {responds_raw.status_code}')
 
     @staticmethod
-    def query_wind(api_name, col_mapping=None, dt_cols=None, **func_kwargs):
+    def query_wind(api_name, col_mapping=None, dt_cols=None, col='Fields', index='Times', **func_kwargs):
         if 'fields' in func_kwargs.keys():
             func_kwargs['fields'] = ','.join(func_kwargs['fields']).lower()
 

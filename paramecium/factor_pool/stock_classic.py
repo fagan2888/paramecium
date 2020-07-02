@@ -38,8 +38,7 @@ class FamaFrench(AbstractFactor):
 
         # get derivative data
         derivative = stock_.get_derivative_indicator(
-            trade_dt=f'{dt:%Y%m%d}',
-            fields=['mv', 'pe_ttm'],
+            trade_dt=dt, fields=['mv', 'pe_ttm'],
         ).rename(columns={'mv': 'capt'}).filter(universe, axis=0).fillna({'pe_ttm': 0})
 
         # calculate and clean outliers.

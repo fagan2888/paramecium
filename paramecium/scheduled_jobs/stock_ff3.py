@@ -20,7 +20,8 @@ class StockFF3Factor(BaseJob):
     Localized Stock Fama-French Data
     """
     meta_args = (
-        {'type': 'string', 'description': 'date string that can be translate by pd.to_datetime'}
+        {'type': 'string', 'description': 'date string that can be translate by pd.to_datetime, default is None'},
+        {'type': 'string', 'description': 'date string that can be translate by pd.to_datetime, default is None'}
     )
     prefix = 'ff3_'
 
@@ -42,7 +43,7 @@ class StockFF3Factor(BaseJob):
             real_start, = session.query(
                 sa.func.max(index.DerivativePrice.trade_dt),
             ).filter(
-                index.DerivativePrice.benchmark_code == self.codes[0]
+                index.DerivativePrice.wind_code == self.codes[0]
             ).one()
         if real_start is None:
             # table is empty, so set first nav as base point.
@@ -50,7 +51,7 @@ class StockFF3Factor(BaseJob):
             self.get_logger().debug('`max_dt` is None, run from start.')
             self.insert_data(
                 records=({
-                    'benchmark_code': c, 'benchmark_name': n,
+                    'wind_code': c, 'benchmark_name': n,
                     'base_date': real_start, 'base_point': 1e3,
                     'updated_at': sa.func.current_timestamp()
                 } for c, n in zip(self.codes, self.names)),
@@ -58,7 +59,7 @@ class StockFF3Factor(BaseJob):
                 msg='benchmark code into description table'
             )
             self.insert_data(
-                records=({'benchmark_code': c, 'trade_dt': real_start, 'close_': 1e3} for c in self.codes),
+                records=({'wind_code': c, 'trade_dt': real_start, 'close_': 1e3} for c in self.codes),
                 model=index.DerivativePrice,
             )
         else:
@@ -70,7 +71,7 @@ class StockFF3Factor(BaseJob):
             self.get_logger().debug(f'`max_dt` is not None, run from {real_start:%Y-%m-%d}.')
             with get_session() as session:
                 session.query(index.DerivativePrice).filter(
-                    index.DerivativePrice.benchmark_code.in_(self.codes),
+                    index.DerivativePrice.wind_code.in_(self.codes),
                     index.DerivativePrice.trade_dt > real_start
                 ).delete(synchronize_session='fetch')
 
@@ -83,14 +84,14 @@ class StockFF3Factor(BaseJob):
         with get_session() as session:
             ff3_close = pd.DataFrame(
                 session.query(
-                    index.DerivativePrice.benchmark_code,
+                    index.DerivativePrice.wind_code,
                     index.DerivativePrice.close_,
                 ).filter(
                     index.DerivativePrice.trade_dt == month_end,
-                    index.DerivativePrice.benchmark_code.in_(self.codes),
+                    index.DerivativePrice.wind_code.in_(self.codes),
                 ).all(),
-                columns=['benchmark_code', 'close_']
-            ).set_index('benchmark_code').squeeze()
+                columns=['wind_code', 'close_']
+            ).set_index('wind_code').squeeze()
 
         dates = (t for t in get_dates(FreqEnum.D) if real_start < t <= pd.Timestamp(end if end else get_last_td()))
         for dt in dates:
@@ -100,7 +101,7 @@ class StockFF3Factor(BaseJob):
             cum_ret = factor.groupby('label').apply(lambda df: df['ret'].dot(df['capt']) / df['capt'].sum())
             nav = ff3_close.mul(cum_ret.rename(index=lambda k: f'{self.prefix}{k.lower()}').add(1)).round(6)
             self.insert_data(
-                records=[{'benchmark_code': k, 'trade_dt': dt, 'close_': v} for k, v in nav.items()],
+                records=[{'wind_code': k, 'trade_dt': dt, 'close_': v} for k, v in nav.items()],
                 model=index.DerivativePrice, msg=f'{dt:%Y-%m-%d}'
             )
 

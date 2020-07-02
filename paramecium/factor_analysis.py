@@ -78,8 +78,11 @@ class AbstractFactorAnalyzer(metaclass=abc.ABCMeta):
     def snapshot_reg(val, ret):
         def _agg(arr):
             arr_, ret_ = arr.dropna().align(ret, axis=0, join='inner')
-            reg = stats.regression(ret_.values, np.vstack([np.ones_like(arr_), arr_.values]).T)
-            return pd.Series([reg.beta[1], reg.t_value[1]], index=['ret', 't'])
+            if arr_.shape[0]:
+                reg = stats.regression(ret_.values, np.vstack([np.ones_like(arr_), arr_.values]).T)
+                return pd.Series([reg.beta[1], reg.t_value[1]], index=['ret', 't'])
+            else:
+                return pd.Series()
 
         return val.apply(_agg).T
 
@@ -227,4 +230,43 @@ class SingleFactorAnalyzer(AbstractFactorAnalyzer):
     def run(self, output, start_date=None, end_date=None, freq=const.FreqEnum.M, shift=1):
         if start_date is None:
             start_date = self.obj.start_date
+        super().run(output, start_date, end_date, freq, shift)
+
+
+class SingleFactorAnalyzerM(AbstractFactorAnalyzer):
+    """
+    单因子分析
+    """
+
+    def __init__(self, factors, transformers=(tf.OutlierMAD(), tf.ScaleNormalize()),
+                 universe: 'AbstractUniverse' = None, ic_method='spearman', group_quantile=5):
+        self.obj_list = factors
+        super().__init__(transformers, universe, ic_method, group_quantile)
+
+    @lru_cache(maxsize=4)
+    def get_price(self, dt):
+        return _get_adj_price(dt, asset_type=self.universe.asset_type)
+
+    def get_ret(self, start, end):
+        return self.get_price(end).div(self.get_price(start)).sub(1).dropna()
+
+    @lru_cache()
+    def io(self, factor):
+        return FactorDBTool(factor)
+
+    def get_one(self, obj, dt):
+        io = self.io(obj)
+        name = io.table.key
+        return io.fetch_snapshot(dt).add_prefix(f'{name}.')
+
+    @lru_cache(maxsize=4)
+    def get_factor(self, dt):
+        val = pd.concat((self.get_one(obj, dt) for obj in self.obj_list), axis=1)
+        if self.universe is not None:
+            val = val.filter(self.universe.get_instruments(dt), axis=0)
+        return val
+
+    def run(self, output, start_date=None, end_date=None, freq=const.FreqEnum.M, shift=1):
+        if start_date is None:
+            start_date = min((obj.start_date for obj in self.obj_list))
         super().run(output, start_date, end_date, freq, shift)

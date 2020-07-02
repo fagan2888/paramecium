@@ -12,7 +12,7 @@ from .._postgres import *
 class FundFactorList(BaseORM):
     __tablename__ = 'monitor_factor_list'
 
-    target_table = sa.Column(sa.String(100), primary_key=True)
+    oid = gen_oid()
     module_path = sa.Column(sa.String(400), index=True)
     params = sa.Column(pg.JSONB)
     calc_freq = sa.Column(sa.String(1), index=True)

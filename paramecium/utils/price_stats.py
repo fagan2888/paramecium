@@ -79,7 +79,7 @@ class RegressionResult(object):
 
 def regression(returns, factors, sample_weight=None):
     """
-    Regression function directly use numpy function. maybe add a weight param later.
+    Regression function directly use numpy function.
     :param returns: returns array with n sample and m portfolio.
     :param factors: returns array with n sample and k factor.
     :param sample_weight: n*1 array

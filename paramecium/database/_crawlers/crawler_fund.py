@@ -81,6 +81,7 @@ class FundDescription(CrawlerJob):
 
     def temp_localized(self, exists_codes):
         self.get_logger().debug('temporary localized from wind')
+        exists_codes_symbol = {c.split('.')[0] for c in exists_codes}
 
         w_set = pd.concat((
             self.query_wind(
@@ -99,7 +100,7 @@ class FundDescription(CrawlerJob):
         w_desc = pd.concat((
             self.query_wind(
                 api_name='wss', codes=funds, fields=self.w_info.keys(), col_mapping=self.w_info
-            ) for funds in utils.chunk({*w_set} - {*exists_codes}, 800)
+            ) for funds in utils.chunk((c for c in w_set if c.split('.')[0] not in exists_codes_symbol), 800)
         ), axis=0, sort=False)
         w_desc.loc[:, 'is_initial'] = (w_desc['is_initial'] == '是').astype(int)
         w_desc['wind_code'], w_desc.index = w_desc.index, w_desc.index.str.replace('!', '')
@@ -145,6 +146,27 @@ class FundNav(CrawlerJob):
     """
 
     def run(self, *args, **kwargs):
+        max_dts = self.query_range()
+
+        nav = pd.DataFrame()
+        for i, (code, dt) in enumerate(max_dts.items(), start=1):
+            try:
+                self.get_logger().info(f'getting {code} nav from tushare')
+                nav = pd.concat((
+                    nav,
+                    self.get_tushare_data(api_name='fund_nav', ts_code=code)
+                ), axis=0).loc[lambda df: df['trade_dt'] >= dt]
+            except Exception as e:
+                self.get_logger().error(f'error happends when run {repr(e)}')
+                break
+
+            if nav.shape[0] > 10000:
+                nav = self.insert_nav(nav, i / max_dts.shape[0])
+
+        self.insert_nav(nav, 1)
+        self.clean_duplicates(fund.Nav, [fund.Nav.wind_code, fund.Nav.trade_dt])
+
+    def query_range(self):
         self.get_logger().info('query exist nav data to get query range')
         with get_session() as session:
             max_dts = pd.read_sql(
@@ -165,25 +187,7 @@ class FundNav(CrawlerJob):
                 """,
                 session.bind, parse_dates=['max_dt'], index_col=['wind_code']
             ).squeeze().loc[lambda ser: ser < get_last_td()]  # (ser.index.str.len() < 10) &
-        max_dts -= pd.Timedelta(days=7)
-
-        nav = pd.DataFrame()
-        for i, (code, dt) in enumerate(max_dts.items(), start=1):
-            try:
-                self.get_logger().info(f'getting {code} nav from tushare')
-                nav = pd.concat((
-                    nav,
-                    self.get_tushare_data(api_name='fund_nav', ts_code=code)
-                ), axis=0).loc[lambda df: df['trade_dt'] >= dt]
-            except Exception as e:
-                self.get_logger().error(f'error happends when run {repr(e)}')
-                break
-
-            if nav.shape[0] > 10000:
-                nav = self.insert_nav(nav, i / max_dts.shape[0])
-
-        self.insert_nav(nav, 1)
-        self.clean_duplicates(fund.Nav, [fund.Nav.wind_code, fund.Nav.trade_dt])
+        return max_dts - pd.Timedelta(days=7)
 
     def insert_nav(self, nav, pct):
         nav['adj_factor'] = nav['adj_nav'].div(nav['unit_nav']).round(6)
@@ -257,15 +261,19 @@ class FundPortfolioAsset(CrawlerJob):
             self.insert_data(ts_data.loc[lambda df: df['bond_value'].gt(0)], fund.PortfolioAssetBond)
 
         # 临时的修补坑数据
-        fund_list = self.get_max_dt().loc[lambda df: df['is_initial'].eq(1)]
+        last_q = pd.Timestamp.now() - QuarterEnd(n=1)
+        fund_list = self.get_max_dt().loc[lambda df: df['is_initial'].eq(1) & (df['max_dt'] < last_q)]
         mapping = get_wind_conf('crawler_mf_prf')
         for _, row in fund_list.iterrows():
             w_data = self.query_wind(
                 api_name='wsd', codes=row['wind_code'], fields=mapping['fields'].keys(), col_mapping=mapping['fields'],
-                beginTime=row['max_dt'] + QuarterEnd(n=1), endTime=pd.Timestamp.now() - QuarterEnd(n=1),
+                beginTime=row['max_dt'] + QuarterEnd(n=1), endTime=last_q,
                 options=mapping['options']
             ).assign(wind_code=row['wind_code'])
-            w_data['end_date'] = w_data.index
+            if w_data.shape[0] < 2:
+                w_data['end_date'] = row['max_dt'] + QuarterEnd(n=1)
+            else:
+                w_data['end_date'] = w_data.index
             self.insert_data(w_data, fund.PortfolioAsset, msg=row['wind_code'])
 
         self.clean_duplicates(fund.PortfolioAsset, [fund.PortfolioAsset.wind_code, fund.PortfolioAsset.end_date])

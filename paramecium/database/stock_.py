@@ -3,7 +3,6 @@
 @Time: 2020/6/7 14:41
 @Author: Sue Zhu
 
-TESTTESTTEST
 """
 from functools import lru_cache
 
@@ -13,11 +12,14 @@ from .pg_models import stock
 from ._postgres import get_session
 from ._third_party_api import get_tushare_data
 from ._tool import flat_1dim
+from .. import const
 from ..interface import AbstractUniverse
 
 
 @lru_cache()
 class StockUniverse(AbstractUniverse):
+    asset_type = const.AssetEnum.STOCK
+
     def __init__(self, issue_month=12, delist_month=1, no_st=True, no_suspend=True):
         self.issue = issue_month * 31
         self.delist = delist_month * 31
@@ -42,13 +44,13 @@ class StockUniverse(AbstractUniverse):
             query_st = pd.DataFrame(
                 session.query(
                     stock.ASharePreviousName.wind_code,
-                    stock.ASharePreviousName.sector_code
+                    stock.ASharePreviousName.use_name
                 ).filter(
                     stock.ASharePreviousName.entry_dt <= trade_dt,
                     stock.ASharePreviousName.remove_dt >= trade_dt
                 ).all()
             )
-            stock_dt = query_st.loc[query_st['new_name'].str.contains(r'ST|PT|退市'), 'wind_code']
+            stock_dt = query_st.loc[query_st['use_name'].str.contains(r'ST|PT|退市'), 'wind_code']
 
         return {*flat_1dim(query_desc)} - {*flat_1dim(query_trade)} - {*stock_dt}
 

@@ -51,7 +51,6 @@ class OutlierMAD(AbstractTransformer):
     The default constant = 1.4826 (approximately \(1/\Phi^{-1}(\frac 3 4)\) = 1/qnorm(3/4)) ensures consistency,
     i.e., $$E[mad(X_1,\dots,X_n)] = \sigma$$ for \(X_i\) distributed as \(N(\mu, \sigma^2)\) and large \(n\).
     """
-
     __slots__ = ['_is_drop', '_median', '_mad']
 
     def __init__(self, drop=False, constant=1.4826):
@@ -91,28 +90,3 @@ class OutlierMAD(AbstractTransformer):
             row[row <= lower_bound] = lower_bound + 0.5 * sigma * (1 - self._min_max(rank_row[row <= lower_bound]))
             row[row >= upper_bound] = upper_bound + 0.5 * sigma * self._min_max(rank_row[row >= upper_bound])
         return row
-
-# def outlier_mad(raw_factor):
-#     """
-#     Clean Outlier with `Median absolute deviation`
-#     :param raw_factor: 1d array
-#     :return:
-#     """
-#     # excess values - median absolute deviation (MAD)
-#     # p.s. in scipy 1.3+ can use scipy.stats.median_absolute_deviation for calculate mad
-#     factor_median = np.nanmedian(raw_factor)
-#     mad = np.nanmedian(np.abs(raw_factor - factor_median))
-#
-#     sigma = 1.4826 * mad
-#     ranking = np.arange(raw_factor.shape[0])[raw_factor.argsort()]
-#
-#     upper_bound = factor_median + 3 * sigma
-#     lower_bound = factor_median - 3 * sigma
-#     upper = ranking[raw_factor > upper_bound]
-#     upper -= upper.min() + 1
-#     lower = ranking[raw_factor < lower_bound]
-#     # new_factor.loc[raw_factor > upper_bound] = raw_factor.loc[raw_factor > upper_bound].rank(ascending=True,
-#     #                                                                                          pct=True) * 0.5 * sigma + upper_bound
-#     # new_factor.loc[raw_factor < lower_bound] = lower_bound - raw_factor.loc[raw_factor < lower_bound].rank(
-#     #     ascending=False, pct=True) * 0.5 * sigma
-#     # return new_factor

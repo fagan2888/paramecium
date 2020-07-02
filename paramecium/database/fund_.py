@@ -20,6 +20,7 @@ from ..interface import AbstractUniverse
 
 @lru_cache(maxsize=4)
 class FundUniverse(AbstractUniverse):
+    asset_type = const.AssetEnum.CMF
 
     def __init__(self, include_=(),
                  # 定期开放,委外,机构,可转债

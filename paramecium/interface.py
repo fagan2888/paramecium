@@ -29,6 +29,7 @@ class AbstractTransformer(metaclass=abc.ABCMeta):
 
 class AbstractUniverse(metaclass=abc.ABCMeta):
     """ Universe Interface """
+    asset_type = None
 
     @abc.abstractmethod
     def get_instruments(self, dt):

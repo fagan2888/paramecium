@@ -101,9 +101,17 @@ class FundSector(CrawlerJob):
                     api_name='wset', tablename="sectorconstituent",
                     options=f"date={dt:%Y-%m-%d};sectorid={code};field=wind_code",
                 ).assign(trade_dt=dt, sector_code=code, type_=code[:4])
+                if sector_list.empty:
+                    continue
+                sector_list.loc[:, 'wind_code'] = sector_list['wind_code'].map(self.code_mapping)
                 self.insert_data(sector_list, fund.SectorSnapshot, msg=f'{dt:%Y%m%d} - {code}')
 
     def run(self, *args, **kwargs):
+        with get_session() as ss:
+            self.code_mapping = pd.DataFrame(
+                ss.query(fund.Description.wind_code).all()
+            ).squeeze()
+            self.code_mapping.index = self.code_mapping.map(lambda x: x.split('.')[0] + '.OF').values
         # '200101x'按底层资产分类
         self.query_and_insert(
             const.FreqEnum.M,
@@ -118,8 +126,9 @@ class FundSector(CrawlerJob):
         # '1000x'特殊分类
         self.query_and_insert(
             const.FreqEnum.Q,
-            # 定期开放,委外,机构,可转债
-            ("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000")
+            # 定期开放,委外,机构,可转债,浮动净值,理财基金
+            ("1000007793000000", "1000027426000000", "1000031885000000", "1000023509000000",
+             "1000033974000000", "1000031776000000")
         )
 
 
